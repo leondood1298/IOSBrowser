@@ -231,11 +231,11 @@ nonisolated final class StreamDownload: @unchecked Sendable {
     /// Downloads what's missing, then writes the joined video to `output`.
     func run(to output: URL, progress: @escaping @Sendable (Progress) -> Void) async throws {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let pieces = pieces(of: video, prefix: "v") + (audio.map { pieces(of: $0, prefix: "a") } ?? [])
+        let all = pieces(of: video, prefix: "v") + (audio.map { pieces(of: $0, prefix: "a") } ?? [])
         var done = 0
         var bytes: Int64 = 0
         var missing: [Piece] = []
-        for piece in pieces {
+        for piece in all {
             if let size = (try? piece.file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size > 0 {
                 done += 1
                 bytes += Int64(size)
@@ -243,7 +243,7 @@ nonisolated final class StreamDownload: @unchecked Sendable {
                 missing.append(piece)
             }
         }
-        progress(Progress(completed: done, total: pieces.count, bytes: bytes, isProcessing: false))
+        progress(Progress(completed: done, total: all.count, bytes: bytes, isProcessing: false))
 
         try await withThrowingTaskGroup(of: Int64.self) { group in
             var queue = missing.makeIterator()
@@ -254,7 +254,7 @@ nonisolated final class StreamDownload: @unchecked Sendable {
             while let size = try await group.next() {
                 done += 1
                 bytes += size
-                progress(Progress(completed: done, total: pieces.count, bytes: bytes, isProcessing: false))
+                progress(Progress(completed: done, total: all.count, bytes: bytes, isProcessing: false))
                 if let piece = queue.next() {
                     group.addTask { try await self.fetch(piece) }
                 }
@@ -262,7 +262,7 @@ nonisolated final class StreamDownload: @unchecked Sendable {
         }
         try Task.checkCancellation()
 
-        progress(Progress(completed: done, total: pieces.count, bytes: bytes, isProcessing: true))
+        progress(Progress(completed: done, total: all.count, bytes: bytes, isProcessing: true))
         do {
             try await assemble(to: output)
         } catch let error as StreamError {
