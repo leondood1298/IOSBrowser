@@ -80,11 +80,6 @@ struct FileRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            if item.isDirectory {
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
         }
         .padding(.vertical, 2)
         .contentShape(Rectangle())
