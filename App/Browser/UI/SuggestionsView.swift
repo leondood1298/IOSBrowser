@@ -143,6 +143,7 @@ struct SuggestionsView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("suggestionRow")
             }
             if model.showsFindRow {
                 Button {

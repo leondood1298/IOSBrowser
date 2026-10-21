@@ -19,7 +19,9 @@ final class AddressField: UITextField {
     var completionProvider: ((String) -> String?)?
     private var lastEditWasInsertionAtEnd = false
 
-    private let lockView = UIImageView(image: UIImage(systemName: "lock.fill"))
+    /// Space between the text and the field's rounded ends.
+    private static let textInset: CGFloat = 12
+    private let leadingButtons = UIView(frame: CGRect(x: 0, y: 0, width: 76, height: 38))
     private let shieldButton = UIButton(type: .system)
     private let pageSettingsButton = UIButton(type: .system)
     private let reloadButton = UIButton(type: .system)
@@ -66,9 +68,6 @@ final class AddressField: UITextField {
             guard let self else { return }
             self.onPageSettings?(self.pageSettingsButton)
         }, for: .touchUpInside)
-        lockView.tintColor = .secondaryLabel
-        lockView.contentMode = .center
-        lockView.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .caption2)
         shieldButton.setImage(UIImage(systemName: "shield.lefthalf.filled"), for: .normal)
         shieldButton.tintColor = .label
         shieldButton.accessibilityLabel = "Tracking Protection"
@@ -77,21 +76,19 @@ final class AddressField: UITextField {
             guard let self else { return }
             self.onShield?(self.shieldButton)
         }, for: .touchUpInside)
-        lockView.isHidden = true
-        let leading = UIStackView(arrangedSubviews: [shieldButton, pageSettingsButton])
-        leading.spacing = 0
-        leading.frame = CGRect(x: 0, y: 0, width: 76, height: 30)
-        shieldButton.widthAnchor.constraint(equalToConstant: 38).isActive = true
-        pageSettingsButton.widthAnchor.constraint(equalToConstant: 38).isActive = true
-        leftView = leading
-        leftViewMode = .unlessEditing
+        // Plain frames, no Auto Layout: with a stack view here the empty field showed neither
+        // the placeholder nor the cursor.
+        shieldButton.frame = CGRect(x: 0, y: 0, width: 38, height: 38)
+        pageSettingsButton.frame = CGRect(x: 38, y: 0, width: 38, height: 38)
+        leadingButtons.addSubview(shieldButton)
+        leadingButtons.addSubview(pageSettingsButton)
+        leftView = leadingButtons
 
-        reloadButton.frame = CGRect(x: 0, y: 0, width: 36, height: 30)
+        reloadButton.frame = CGRect(x: 0, y: 0, width: 38, height: 38)
         reloadButton.tintColor = .label
         reloadButton.accessibilityIdentifier = "reloadButton"
         reloadButton.addAction(UIAction { [weak self] _ in self?.onReloadOrStop?() }, for: .touchUpInside)
         rightView = reloadButton
-        rightViewMode = .unlessEditing
 
         heightAnchor.constraint(equalToConstant: 38).isActive = true
         let preferredWidth = widthAnchor.constraint(equalToConstant: 680)
@@ -154,12 +151,40 @@ final class AddressField: UITextField {
         let showingPage = URLDisplay.host(for: currentURL) != nil
         reloadButton.setImage(UIImage(systemName: isLoadingPage ? "xmark" : "arrow.clockwise"), for: .normal)
         reloadButton.accessibilityLabel = isLoadingPage ? "Stop" : "Reload"
-        reloadButton.isHidden = !showingPage
-        pageSettingsButton.isHidden = !showingPage
-        shieldButton.isHidden = !showingPage
+        // The page buttons only make sense with a page; the New Tab page gets the full width.
+        leftViewMode = showingPage ? .unlessEditing : .never
+        rightViewMode = showingPage ? .unlessEditing : .never
+        setNeedsLayout()
         guard !isEditing else { return }
         text = URLDisplay.host(for: currentURL)
         textAlignment = .center
+    }
+
+    // MARK: - Text layout
+
+    /// While not editing, the host is centered on the whole field, so the text area is inset
+    /// equally on both sides by the wider of the two side views.
+    override func textRect(forBounds bounds: CGRect) -> CGRect {
+        var inset = Self.textInset
+        if leftViewMode != .never, let leftView {
+            inset = max(inset, leftView.frame.width + 2)
+        }
+        if rightViewMode != .never, let rightView {
+            inset = max(inset, rightView.frame.width + 2)
+        }
+        return bounds.insetBy(dx: min(inset, bounds.width / 2), dy: 0)
+    }
+
+    /// While editing, the text starts near the left end and stops before the clear button.
+    override func editingRect(forBounds bounds: CGRect) -> CGRect {
+        let clearButton = clearButtonRect(forBounds: bounds)
+        let maxX = clearButton.width > 0 ? clearButton.minX - 4 : bounds.maxX - Self.textInset
+        let minX = bounds.minX + Self.textInset
+        return CGRect(x: minX, y: bounds.minY, width: max(0, maxX - minX), height: bounds.height)
+    }
+
+    override func placeholderRect(forBounds bounds: CGRect) -> CGRect {
+        isEditing ? editingRect(forBounds: bounds) : textRect(forBounds: bounds)
     }
 }
 

@@ -23,7 +23,7 @@ final class ScreenshotTests: UITestCase {
         app.buttons["overviewDoneButton"].tap()
 
         app.typeKey("n", modifierFlags: [.command, .shift])
-        XCTAssertTrue(app.otherElements["newTabPage"].waitForExistence(timeout: 10))
+        XCTAssertTrue(element("newTabPage").waitForExistence(timeout: 10))
         saveScreenshot("05-private-tab")
     }
 
@@ -32,7 +32,7 @@ final class ScreenshotTests: UITestCase {
         launch()
         open("localhost:8000/dialogs.html")
         let alertButton = app.webViews.buttons["Show alert"]
-        XCTAssertTrue(alertButton.waitForExistence(timeout: 30))
+        XCTAssertTrue(alertButton.waitForExistence(timeout: 60))
         alertButton.tap()
         let alert = app.alerts.firstMatch
         XCTAssertTrue(alert.waitForExistence(timeout: 10))

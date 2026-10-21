@@ -210,7 +210,7 @@ final class BrowserViewController: UIViewController {
         tabObservers.removeAll()
         refreshTabStrip()
         guard let tab else {
-            displayedWebView?.removeFromSuperview()
+            removeDisplayedWebView()
             showStartPage(isPrivate: model.isPrivate)
             return
         }
@@ -220,7 +220,7 @@ final class BrowserViewController: UIViewController {
             .sink { [weak self, weak tab] showsStartPage in
                 guard let self, let tab else { return }
                 if showsStartPage {
-                    self.displayedWebView?.removeFromSuperview()
+                    self.removeDisplayedWebView()
                     self.showStartPage(isPrivate: tab.isPrivate)
                 } else {
                     self.hideStartPage()
@@ -254,8 +254,14 @@ final class BrowserViewController: UIViewController {
             .store(in: &tabObservers)
     }
 
+    /// Takes the shown page off screen; its tab keeps the web view for when it's shown again.
+    private func removeDisplayedWebView() {
+        displayedWebView?.removeFromSuperview()
+        displayedWebView = nil
+    }
+
     private func display(_ webView: WKWebView, for tab: TabModel) {
-        if displayedWebView !== webView {
+        if displayedWebView !== webView || webView.superview !== contentView {
             displayedWebView?.removeFromSuperview()
             webView.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(webView)
@@ -372,8 +378,8 @@ final class BrowserViewController: UIViewController {
     private func find(_ query: String) {
         addressField.resignFirstResponder()
         guard let interaction = displayedWebView?.findInteraction else { return }
-        interaction.searchText = query
         interaction.presentFindNavigator(showingReplace: false)
+        interaction.searchText = query
     }
 
     private func hideSuggestions() {

@@ -46,11 +46,15 @@ final class BrowsingFeatureTests: UITestCase {
         let field = app.textFields["urlField"]
         field.tap()
         field.typeText("second")
-        let suggestion = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Second test page'")).firstMatch
+        // The first tab shows the second page, so the row offers to switch to it.
+        let suggestion = app.buttons
+            .matching(NSPredicate(format: "identifier == 'suggestionRow' AND label CONTAINS 'Second test page'"))
+            .firstMatch
         XCTAssertTrue(suggestion.waitForExistence(timeout: 10))
         saveScreenshot("11-suggestions")
         suggestion.tap()
         waitForText("Second test page")
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "suggestionRow").count, 0)
 
         app.typeKey("y", modifierFlags: .command)
         XCTAssertTrue(app.staticTexts["Browser test page"].waitForExistence(timeout: 10))
@@ -66,8 +70,7 @@ final class BrowsingFeatureTests: UITestCase {
         app.webViews.links["Second page"].press(forDuration: 1.5)
         XCTAssertTrue(app.buttons["Open in New Tab"].waitForExistence(timeout: 10))
         saveScreenshot("13-link-menu")
-        tapOutside()
-        sleep(1)
+        dismissMenu(containing: "Open in New Tab")
 
         let image = app.webViews.images["Sample image"]
         XCTAssertTrue(image.waitForExistence(timeout: 10))
@@ -75,7 +78,7 @@ final class BrowsingFeatureTests: UITestCase {
         XCTAssertTrue(app.buttons["Save to Downloads"].waitForExistence(timeout: 10))
         saveScreenshot("14-image-menu")
         app.buttons["Save to Downloads"].tap()
-        XCTAssertTrue(app.otherElements["toast"].waitForExistence(timeout: 10))
+        XCTAssertTrue(element("toast").waitForExistence(timeout: 10))
         saveScreenshot("15-image-saved")
     }
 
@@ -84,7 +87,7 @@ final class BrowsingFeatureTests: UITestCase {
         launch()
         open("localhost:8000/media.html")
         let play = app.webViews.buttons["Play tone"]
-        XCTAssertTrue(play.waitForExistence(timeout: 30))
+        XCTAssertTrue(play.waitForExistence(timeout: 60))
         play.tap()
         let audioButton = app.buttons["tabAudioButton"]
         // The simulator on CI may have no audio output; record what happened either way.

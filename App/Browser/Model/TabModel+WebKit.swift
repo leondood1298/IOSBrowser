@@ -211,9 +211,19 @@ extension TabModel: WKUIDelegate {
             arguments: [:], in: nil, contentWorld: UserScripts.world)
         let info = result as? [String: Any]
         let link = elementInfo.linkURL ?? (info?["link"] as? String).flatMap(URL.init(string:))
-        let image = (info?["image"] as? String).flatMap(URL.init(string:))
+        let image = (info?["image"] as? String).flatMap(URL.init(string:)) ?? Self.imageURL(of: elementInfo)
         return ContextMenus.configuration(
             link: link, image: image, linkTitle: info?["title"] as? String, tab: self, handler: handler)
+    }
+
+    /// The pressed image's address from WebKit's own element info (private API), for when the
+    /// page script didn't see the touch, e.g. inside a frame.
+    private static func imageURL(of elementInfo: WKContextMenuElementInfo) -> URL? {
+        guard elementInfo.responds(to: NSSelectorFromString("_activatedElementInfo")),
+              let activated = elementInfo.value(forKey: "_activatedElementInfo") as? NSObject,
+              activated.responds(to: NSSelectorFromString("imageURL"))
+        else { return nil }
+        return activated.value(forKey: "imageURL") as? URL
     }
 
     func webView(

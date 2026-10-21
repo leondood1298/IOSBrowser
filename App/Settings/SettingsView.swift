@@ -146,6 +146,7 @@ struct SettingsView: View {
             } label: {
                 LabeledContent("Search", value: AppServices.shared.searchEngines.defaultEngine.name)
             }
+            .accessibilityIdentifier("searchSettingsLink")
         }
     }
 

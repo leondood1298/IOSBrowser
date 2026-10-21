@@ -26,8 +26,8 @@ final class PrivacyFlowTests: UITestCase {
         XCTAssertTrue(erase.waitForExistence(timeout: 10))
         saveScreenshot("22-private-before-erase")
         erase.tap()
-        XCTAssertTrue(app.otherElements["toast"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.otherElements["newTabPage"].waitForExistence(timeout: 10))
+        XCTAssertTrue(element("toast").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("newTabPage").waitForExistence(timeout: 10))
         saveScreenshot("23-after-erase")
     }
 
@@ -41,6 +41,6 @@ final class PrivacyFlowTests: UITestCase {
         XCTAssertTrue(app.buttons["confirmClearDataButton"].waitForExistence(timeout: 10))
         saveScreenshot("24-clear-data")
         app.buttons["confirmClearDataButton"].tap()
-        XCTAssertTrue(app.otherElements["toast"].waitForExistence(timeout: 10))
+        XCTAssertTrue(element("toast").waitForExistence(timeout: 10))
     }
 }

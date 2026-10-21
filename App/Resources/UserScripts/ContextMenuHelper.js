@@ -19,6 +19,9 @@
     return info;
   }
 
+  document.addEventListener("pointerdown", function (event) {
+    if (event.isPrimary) { last = describe(event.target); }
+  }, { capture: true, passive: true });
   document.addEventListener("touchstart", function (event) {
     last = event.touches.length === 1 ? describe(event.target) : null;
   }, { capture: true, passive: true });
