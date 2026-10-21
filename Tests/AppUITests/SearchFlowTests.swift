@@ -43,7 +43,11 @@ final class SearchFlowTests: UITestCase {
         tapMenuItem("Settings")
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
         let link = element("searchSettingsLink")
-        XCTAssertTrue(link.waitForExistence(timeout: 10))
+        // Rows below the visible part of the form aren't created until scrolled to.
+        for _ in 0..<4 where !link.waitForExistence(timeout: 2) {
+            app.swipeUp()
+        }
+        XCTAssertTrue(link.waitForExistence(timeout: 5))
         link.tap()
         XCTAssertTrue(app.navigationBars["Search"].waitForExistence(timeout: 10))
         saveScreenshot("28-search-settings")

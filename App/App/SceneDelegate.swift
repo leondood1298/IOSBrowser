@@ -40,7 +40,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             .store(in: &observers)
 
         let root = BrowserSplitViewController(model: model)
-        let window = UIWindow(windowScene: windowScene)
+        let window = BrowserWindow(windowScene: windowScene)
+        window.browser = root.browser
         window.rootViewController = root
         window.makeKeyAndVisible()
         self.window = window

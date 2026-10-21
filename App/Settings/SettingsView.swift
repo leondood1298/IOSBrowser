@@ -21,10 +21,10 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 generalSection
+                searchSection
                 privacySection
                 securitySection
                 linksSection
-                searchSection
                 aboutSection
             }
             .alert("Block Other Content Trackers?", isPresented: $confirmingContent) {

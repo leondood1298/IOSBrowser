@@ -206,14 +206,25 @@ extension TabModel: WKUIDelegate {
         contextMenuConfigurationFor elementInfo: WKContextMenuElementInfo
     ) async -> UIContextMenuConfiguration? {
         guard let handler = delegate else { return nil }
-        let result = try? await webView.callAsyncJavaScript(
-            "return window.__browserContextInfo ? window.__browserContextInfo() : null;",
-            arguments: [:], in: nil, contentWorld: UserScripts.world)
-        let info = result as? [String: Any]
+        var info: [String: Any]?
+        do {
+            let result = try await webView.callAsyncJavaScript(
+                "return window.__browserContextInfo ? window.__browserContextInfo() : null;",
+                arguments: [:], in: nil, contentWorld: UserScripts.world)
+            info = result as? [String: Any]
+        } catch {
+            Log.event("Long-press: page script failed: \(error.localizedDescription)", category: "web")
+        }
         let link = elementInfo.linkURL ?? (info?["link"] as? String).flatMap(URL.init(string:))
-        let image = (info?["image"] as? String).flatMap(URL.init(string:)) ?? Self.imageURL(of: elementInfo)
+        let scriptImage = (info?["image"] as? String).flatMap(URL.init(string:))
+        let webKitImage = scriptImage == nil ? Self.imageURL(of: elementInfo) : nil
+        Log.event(
+            "Long-press: link \(link != nil), page script \(info == nil ? "nothing" : "answered"), "
+                + "image from script \(scriptImage != nil), from WebKit \(webKitImage != nil)",
+            category: "web")
         return ContextMenus.configuration(
-            link: link, image: image, linkTitle: info?["title"] as? String, tab: self, handler: handler)
+            link: link, image: scriptImage ?? webKitImage, linkTitle: info?["title"] as? String, tab: self,
+            handler: handler)
     }
 
     /// The pressed image's address from WebKit's own element info (private API), for when the

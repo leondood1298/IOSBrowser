@@ -41,6 +41,15 @@ jobs:
             -resultBundlePath build/UITests.xcresult \
             2>&1 | tee uitest.log | xcbeautify --renderer github-actions
 
+      - name: Collect the app's log
+        if: always()
+        run: |
+          container=$(xcrun simctl get_app_container "$SIM_ID" io.github.leondood1298.browser data 2> /dev/null || true)
+          if [ -n "$container" ] && [ -d "$container/Library/Caches/Logs" ]; then
+            cp "$container"/Library/Caches/Logs/*.log shots/ 2> /dev/null || true
+            tail -n 80 "$container/Library/Caches/Logs/app.log" || true
+          fi
+
       - name: Export attachments
         if: always()
         run: |

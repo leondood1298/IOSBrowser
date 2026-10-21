@@ -141,6 +141,8 @@ struct SuggestionsView: View {
                         Spacer()
                         badge(for: suggestion.kind)
                     }
+                    // The whole row responds, not just the text and icons.
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("suggestionRow")
