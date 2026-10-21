@@ -45,7 +45,11 @@ enum PageActions {
     /// Saves the page with its images and styles as a .webarchive in Downloads.
     static func saveWebArchive(_ tab: TabModel) async throws -> URL {
         guard let webView = tab.webView else { throw CocoaError(.fileNoSuchFile) }
-        let data = try await webView.webArchiveData()
+        let data: Data = try await withCheckedThrowingContinuation { continuation in
+            webView.createWebArchiveData { result in
+                continuation.resume(with: result)
+            }
+        }
         return try save(data, name: FileNaming.pageFileName(title: tab.pageTitle, url: tab.url, extension: "webarchive"))
     }
 
