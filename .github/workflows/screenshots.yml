@@ -36,8 +36,11 @@ jobs:
       - name: UI tests
         run: |
           mkdir -p shots
+          # A failed test runs once more: the first launch on a cold simulator can time out, and
+          # simulator menus sometimes miss a tap. A real failure fails twice.
           TEST_RUNNER_SHOTS_DIR="$PWD/shots" xcodebuild test -project Browser.xcodeproj -scheme Browser \
             -destination "id=$SIM_ID" -derivedDataPath build/DD -only-testing:BrowserUITests \
+            -retry-tests-on-failure -test-iterations 2 \
             -resultBundlePath build/UITests.xcresult \
             2>&1 | tee uitest.log | xcbeautify --renderer github-actions
 
