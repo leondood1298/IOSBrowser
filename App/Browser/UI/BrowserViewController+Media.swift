@@ -49,10 +49,64 @@ extension BrowserViewController {
             return
         }
         if media.kind == .hls {
-            Toast.show("Saving streaming video (HLS) arrives in the next version", systemImage: "film", in: view)
+            saveStream(media, from: tab)
             return
         }
         services.downloads.download(media.url, from: tab, preferredName: media.suggestedFileName)
+    }
+
+    /// Reads the stream's playlist (asking for the quality when there are several), confirms the
+    /// name and folder, and hands it to the download manager.
+    private func saveStream(_ media: DetectedMedia, from tab: TabModel) {
+        Task {
+            var request = StreamRequest(cookies: [], userAgent: nil, referer: tab.url)
+            if let webView = tab.webView {
+                request = await MediaRequestContext.of(webView).streamRequest(referer: tab.url)
+            }
+            do {
+                let job = try await StreamJob.make(for: media.url, request: request) { [weak self] variants in
+                    await self?.chooseQuality(variants)
+                }
+                guard let job else { return }
+                var name = media.suggestedFileName
+                var folder = services.downloads.defaultFolder(forFileNamed: name, mimeType: "video/mp4")
+                if services.preferences.confirmDownloads {
+                    let choice = await DownloadConfirmation.ask(
+                        from: topController, fileName: name, size: nil, mimeType: "video/mp4", folder: folder)
+                    guard let choice else { return }
+                    name = choice.fileName
+                    folder = choice.folder
+                }
+                services.downloads.startStream(job, fileName: name, folder: folder, sourceURL: media.url, from: tab, request: request)
+            } catch {
+                let alert = UIAlertController(title: "Can't Save This Video", message: error.localizedDescription, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                topController.present(alert, animated: true)
+            }
+        }
+    }
+
+    /// Asks which quality of a stream to save; nil when cancelled.
+    private func chooseQuality(_ variants: [HLSVariant]) async -> HLSVariant? {
+        await withCheckedContinuation { continuation in
+            let sheet = UIAlertController(title: "Choose a Quality", message: nil, preferredStyle: .actionSheet)
+            for variant in variants {
+                let rate = HLSVariant.bitRate(variant.averageBandwidth ?? variant.bandwidth)
+                let title = variant.qualityLabel == rate ? rate : "\(variant.qualityLabel) · \(rate)"
+                sheet.addAction(UIAlertAction(title: title, style: .default) { _ in
+                    continuation.resume(returning: variant)
+                })
+            }
+            // On iPad, tapping outside the popover also runs the Cancel action.
+            sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
+                continuation.resume(returning: nil)
+            })
+            if let popover = sheet.popoverPresentationController {
+                popover.sourceView = addressField
+                popover.sourceRect = addressField.bounds
+            }
+            topController.present(sheet, animated: true)
+        }
     }
 
     /// Plays page media in the app's player, with the page's cookies and user agent.

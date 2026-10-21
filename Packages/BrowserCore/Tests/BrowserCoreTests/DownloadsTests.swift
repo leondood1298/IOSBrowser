@@ -58,6 +58,21 @@ final class DownloadsTests: XCTestCase {
         item.linkExpired = true
         let decoded = try JSONDecoder().decode(DownloadRecord.self, from: JSONEncoder().encode(item))
         XCTAssertEqual(decoded, item)
+
+        item.stream = StreamProgress(segmentCount: 40, completedSegments: 10, quality: "720p")
+        XCTAssertEqual(try JSONDecoder().decode(DownloadRecord.self, from: JSONEncoder().encode(item)), item)
+    }
+
+    func testStreamProgress() throws {
+        var item = record(.running)
+        item.stream = StreamProgress(segmentCount: 40, completedSegments: 10)
+        XCTAssertEqual(item.fractionCompleted, 0.25)
+        // Records saved before streams existed still load.
+        let old = try JSONEncoder().encode(record(.finished))
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: old) as? [String: Any])
+        object.removeValue(forKey: "stream")
+        let decoded = try JSONDecoder().decode(DownloadRecord.self, from: JSONSerialization.data(withJSONObject: object))
+        XCTAssertNil(decoded.stream)
     }
 
     func testTransferRate() {

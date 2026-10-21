@@ -29,10 +29,10 @@ final class DownloadManager: NSObject, ObservableObject {
         var preferredName: String?
     }
 
-    private let preferences: Preferences
+    let preferences: Preferences
     private let file: JSONFileStore<[DownloadRecord]>
     /// Application Support/Downloads: partial files ("Incomplete") and resume data.
-    private let directory: URL
+    let directory: URL
     private var active: [UUID: WKDownload] = [:]
     private var itemIDs: [ObjectIdentifier: UUID] = [:]
     private var origins: [ObjectIdentifier: Origin] = [:]
@@ -52,9 +52,12 @@ final class DownloadManager: NSObject, ObservableObject {
     private var sessionRunning: Set<UUID> = []
     private var partBytes: [UUID: [Int: Int64]] = [:]
     private var merging: Set<UUID> = []
-    private var defaultUserAgent: String?
+    private(set) var defaultUserAgent: String?
     /// The system's completion handler while it runs the app for background download events.
     var backgroundEventsCompletion: (() -> Void)?
+    /// Running stream (HLS) downloads, and the headers each one fetches with (see DownloadManager+Streams).
+    var streamTasks: [UUID: Task<Void, Never>] = [:]
+    var streamRequests: [UUID: StreamRequest] = [:]
 
     static var defaultDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -75,6 +78,7 @@ final class DownloadManager: NSObject, ObservableObject {
         // WebKit downloads stopped with the app; background ones may still be running (see below).
         let webKit = DownloadScheduler.reconcileAfterLaunch(saved.filter { $0.sessionParts == nil }) { [directory] id in
             FileManager.default.fileExists(atPath: Self.resumeDataURL(for: id, in: directory).path)
+                || FileManager.default.fileExists(atPath: Self.streamJobURL(for: id, in: directory).path)
         }
         let byID = Dictionary(uniqueKeysWithValues: webKit.map { ($0.id, $0) })
         let reconciled = saved.map { byID[$0.id] ?? $0 }
@@ -174,6 +178,10 @@ final class DownloadManager: NSObject, ObservableObject {
     // MARK: - Controlling
 
     func pause(_ item: DownloadItem) {
+        if item.record.stream != nil {
+            pauseStream(item)
+            return
+        }
         if item.record.sessionParts != nil {
             pauseSession(item, reason: nil)
             return
@@ -184,6 +192,10 @@ final class DownloadManager: NSObject, ObservableObject {
 
     func resume(_ item: DownloadItem) {
         guard item.record.state == .paused else { return }
+        if item.record.stream != nil {
+            resumeStream(item)
+            return
+        }
         if item.record.sessionParts != nil {
             guard item.move(to: .running, change: { $0.failureReason = nil }) else { return }
             startSessionParts(item)
@@ -209,6 +221,10 @@ final class DownloadManager: NSObject, ObservableObject {
     /// Starts a failed or cancelled download again from its address.
     func retry(_ item: DownloadItem) {
         guard item.record.canRetry, let url = item.record.sourceURL else { return }
+        if item.record.stream != nil {
+            resumeStream(item)
+            return
+        }
         // Retries run in WebKit, the way the page itself would fetch the file.
         if item.record.sessionParts != nil {
             removeSessionFiles(for: item.id)
@@ -243,6 +259,10 @@ final class DownloadManager: NSObject, ObservableObject {
         let download = active[item.id]
         let usesSession = item.record.sessionParts != nil
         guard item.move(to: .cancelled) else { return }
+        if item.record.stream != nil {
+            // Keeps what Retry needs to read the stream again.
+            discardStream(item.id, keepJob: true)
+        }
         if let download {
             untrack(download)
             download.cancel { _ in }
@@ -262,6 +282,9 @@ final class DownloadManager: NSObject, ObservableObject {
     func remove(_ item: DownloadItem) {
         if item.record.state.isActive {
             cancel(item)
+        }
+        if item.record.stream != nil {
+            discardStream(item.id, keepJob: false)
         }
         items.removeAll { $0.id == item.id }
         save()
@@ -290,6 +313,9 @@ final class DownloadManager: NSObject, ObservableObject {
 
     /// Clears finished, failed and cancelled downloads from the list (files stay).
     func clearInactive() {
+        for item in items where !item.record.state.isActive && item.record.stream != nil {
+            discardStream(item.id, keepJob: false)
+        }
         items.removeAll { !$0.record.state.isActive }
         save()
     }
@@ -307,6 +333,9 @@ final class DownloadManager: NSObject, ObservableObject {
         for item in items where item.record.isPrivate && item.record.state.isActive {
             cancel(item)
         }
+        for item in items where item.record.isPrivate && item.record.stream != nil {
+            discardStream(item.id, keepJob: false)
+        }
         items.removeAll { $0.record.isPrivate }
         helperWebViews[true] = nil
     }
@@ -316,7 +345,7 @@ final class DownloadManager: NSObject, ObservableObject {
     /// Keeps downloads going for a while after the app leaves the screen; when that time runs
     /// out they're paused with what's needed to continue later.
     func appDidEnterBackground() {
-        guard !active.isEmpty, backgroundTask == .invalid, !activity.isRunning else { return }
+        guard !active.isEmpty || !streamTasks.isEmpty, backgroundTask == .invalid, !activity.isRunning else { return }
         backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Downloads") { [weak self] in
             MainActor.assumeIsolated {
                 self?.pauseAllForBackground()
@@ -330,6 +359,11 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     private func pauseAllForBackground() {
+        for id in Array(streamTasks.keys) {
+            if let item = item(id) {
+                pauseStream(item, reason: "Paused in the background")
+            }
+        }
         var toStop: [(DownloadItem, WKDownload)] = []
         for (id, download) in active {
             if let item = item(id), item.move(to: .paused, change: { $0.failureReason = "Paused in the background" }) {
@@ -346,6 +380,28 @@ final class DownloadManager: NSObject, ObservableObject {
         }
     }
 
+    /// A stream stopped: the app needn't stay awake in the background when nothing else runs.
+    func streamDidStop() {
+        updateCounts()
+        activity.update(with: items)
+        if active.isEmpty && streamTasks.isEmpty && pendingBackgroundPauses == 0 {
+            endBackgroundTask()
+        }
+    }
+
+    /// Progress from a stream download, for the counts and the Live Activity.
+    func streamProgressChanged() {
+        updateCounts()
+        activity.update(with: items)
+    }
+
+    /// Adds a new download at the top of the list.
+    func insert(_ item: DownloadItem) {
+        items.insert(item, at: 0)
+        save()
+        didStart.send(item)
+    }
+
     private func endBackgroundTask() {
         guard backgroundTask != .invalid else { return }
         UIApplication.shared.endBackgroundTask(backgroundTask)
@@ -355,7 +411,7 @@ final class DownloadManager: NSObject, ObservableObject {
 
     // MARK: - Internals
 
-    private func makeItem(_ record: DownloadRecord) -> DownloadItem {
+    func makeItem(_ record: DownloadRecord) -> DownloadItem {
         let item = DownloadItem(record: record)
         item.onStateChange = { [weak self, weak item] in
             guard let self else { return }
@@ -368,7 +424,7 @@ final class DownloadManager: NSObject, ObservableObject {
         return item
     }
 
-    private func showInLiveActivity(_ item: DownloadItem) {
+    func showInLiveActivity(_ item: DownloadItem) {
         notifier.prepare()
         // UI tests skip it: the simulator can't show it, and system banners could cover the toolbar.
         guard preferences.downloadLiveActivity, !ProcessInfo.processInfo.arguments.contains("--ui-testing") else { return }
@@ -387,7 +443,7 @@ final class DownloadManager: NSObject, ObservableObject {
         guard let id = itemIDs.removeValue(forKey: ObjectIdentifier(download)) else { return nil }
         active[id] = nil
         updateCounts()
-        if active.isEmpty && pendingBackgroundPauses == 0 {
+        if active.isEmpty && streamTasks.isEmpty && pendingBackgroundPauses == 0 {
             endBackgroundTask()
         }
         return item(id)
@@ -422,7 +478,7 @@ final class DownloadManager: NSObject, ObservableObject {
         }
     }
 
-    private func finish(_ item: DownloadItem) {
+    func finish(_ item: DownloadItem) {
         let fileManager = FileManager.default
         let partial = partialFileURL(for: item.record)
         resuming.remove(item.id)
@@ -716,7 +772,7 @@ final class DownloadManager: NSObject, ObservableObject {
         }
     }
 
-    private func updateCounts() {
+    func updateCounts() {
         let running = items.filter { $0.record.state == .running }
         if runningCount != running.count {
             runningCount = running.count
@@ -757,14 +813,14 @@ final class DownloadManager: NSObject, ObservableObject {
             .appendingPathComponent(record.fileName.isEmpty ? "download" : record.fileName)
     }
 
-    private func removePartialFile(for id: UUID) {
+    func removePartialFile(for id: UUID) {
         let folder = directory.appendingPathComponent("Incomplete", isDirectory: true)
             .appendingPathComponent(id.uuidString, isDirectory: true)
         try? FileManager.default.removeItem(at: folder)
     }
 
     /// An empty place for a new transfer to write to (a resumed one keeps its partial file).
-    private func preparePartialFile(for record: DownloadRecord) -> URL {
+    func preparePartialFile(for record: DownloadRecord) -> URL {
         let url = partialFileURL(for: record)
         if !resuming.contains(record.id) {
             removePartialFile(for: record.id)
@@ -773,7 +829,7 @@ final class DownloadManager: NSObject, ObservableObject {
         return url
     }
 
-    private func save() {
+    func save() {
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(300))

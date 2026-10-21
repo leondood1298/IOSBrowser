@@ -72,6 +72,9 @@ final class DownloadItem: ObservableObject, Identifiable {
         case .queued:
             return "Waiting…"
         case .running:
+            if let stream = record.stream {
+                return streamText(stream)
+            }
             var parts = [progress]
             if let speed = bytesPerSecond, speed > 0 {
                 parts.append(DownloadFormatting.speed(speed))
@@ -81,7 +84,8 @@ final class DownloadItem: ObservableObject, Identifiable {
             }
             return parts.joined(separator: " · ")
         case .paused:
-            return ["Paused", progress, record.failureReason].compactMap { $0 }.joined(separator: " · ")
+            let done = record.stream.map { "\($0.completedSegments) of \($0.segmentCount) parts" } ?? progress
+            return ["Paused", done, record.failureReason].compactMap { $0 }.joined(separator: " · ")
         case .finished:
             let size = record.expectedBytes ?? record.receivedBytes
             let date = (record.finished ?? record.created).formatted(date: .abbreviated, time: .shortened)
@@ -91,6 +95,23 @@ final class DownloadItem: ObservableObject, Identifiable {
         case .cancelled:
             return "Cancelled"
         }
+    }
+}
+
+extension DownloadItem {
+    /// A stream downloads in parts, then is joined ("Processing").
+    private func streamText(_ stream: StreamProgress) -> String {
+        if stream.isProcessing {
+            return "Processing…"
+        }
+        var parts = ["\(stream.completedSegments) of \(stream.segmentCount) parts", DownloadFormatting.bytes(record.receivedBytes)]
+        if let speed = bytesPerSecond, speed > 0 {
+            parts.append(DownloadFormatting.speed(speed))
+        }
+        if let quality = stream.quality {
+            parts.append(quality)
+        }
+        return parts.joined(separator: " · ")
     }
 }
 

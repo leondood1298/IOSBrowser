@@ -59,12 +59,15 @@ public struct DownloadRecord: Codable, Sendable, Identifiable, Hashable {
     /// Set when the background URLSession engine runs the download: how many parts it's fetched
     /// in (1 for the whole file). Nil when WebKit runs it.
     public var sessionParts: Int?
+    /// Set for a saved HLS stream, which downloads in segments.
+    public var stream: StreamProgress?
 
     public init(
         id: UUID = UUID(), sourceURL: URL?, pageURL: URL?, fileName: String, folder: String,
         mimeType: String? = nil, expectedBytes: Int64? = nil, receivedBytes: Int64 = 0,
         state: DownloadState = .queued, failureReason: String? = nil, linkExpired: Bool = false,
-        isPrivate: Bool = false, created: Date = Date(), finished: Date? = nil, sessionParts: Int? = nil
+        isPrivate: Bool = false, created: Date = Date(), finished: Date? = nil, sessionParts: Int? = nil,
+        stream: StreamProgress? = nil
     ) {
         self.id = id
         self.sourceURL = sourceURL
@@ -81,6 +84,7 @@ public struct DownloadRecord: Codable, Sendable, Identifiable, Hashable {
         self.created = created
         self.finished = finished
         self.sessionParts = sessionParts
+        self.stream = stream
     }
 
     /// The byte ranges of a session download's parts (empty for one part fetched whole).
@@ -91,6 +95,9 @@ public struct DownloadRecord: Codable, Sendable, Identifiable, Hashable {
 
     /// 0…1, or nil while the size isn't known.
     public var fractionCompleted: Double? {
+        if let stream, stream.segmentCount > 0 {
+            return min(1, Double(stream.completedSegments) / Double(stream.segmentCount))
+        }
         guard let expectedBytes, expectedBytes > 0 else { return nil }
         return min(1, Double(receivedBytes) / Double(expectedBytes))
     }
@@ -99,6 +106,23 @@ public struct DownloadRecord: Codable, Sendable, Identifiable, Hashable {
     public var canRetry: Bool {
         guard let scheme = sourceURL?.scheme?.lowercased() else { return false }
         return scheme == "http" || scheme == "https" || scheme == "data"
+    }
+}
+
+/// How far a saved HLS stream got: its segments are downloaded, then joined into one file.
+public struct StreamProgress: Codable, Sendable, Hashable {
+    public var segmentCount: Int
+    public var completedSegments: Int
+    /// All segments are in and they're being joined ("Processing").
+    public var isProcessing: Bool
+    /// The quality chosen, e.g. "720p".
+    public var quality: String?
+
+    public init(segmentCount: Int, completedSegments: Int = 0, isProcessing: Bool = false, quality: String? = nil) {
+        self.segmentCount = segmentCount
+        self.completedSegments = completedSegments
+        self.isProcessing = isProcessing
+        self.quality = quality
     }
 }
 
