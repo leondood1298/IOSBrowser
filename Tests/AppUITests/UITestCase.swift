@@ -91,6 +91,24 @@ class UITestCase: XCTestCase {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.85)).tap()
     }
 
+    /// Closes the open long-press menu by choosing `item`, and waits until the menu (identified by
+    /// `marker`, another of its items) is gone. The simulator sometimes misses the tap, so it tries
+    /// again, then taps beside the menu.
+    @MainActor
+    func chooseMenuItem(_ item: String, closing marker: String) {
+        for attempt in 0..<3 {
+            if attempt < 2, app.buttons[item].exists {
+                app.buttons[item].tap()
+            } else if attempt == 2 {
+                tapOutside()
+            }
+            if app.buttons[marker].waitForNonExistence(timeout: 5) {
+                return
+            }
+        }
+        XCTFail("The menu with \(marker) didn't close")
+    }
+
     /// Closes the open long-press menu, identified by one of its items, and waits until it's gone.
     @MainActor
     func dismissMenu(containing item: String) {
