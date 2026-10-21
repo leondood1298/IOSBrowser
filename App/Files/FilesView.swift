@@ -27,6 +27,14 @@ struct FilesView: View {
     let startFolder: URL?
     @State private var path: [URL] = []
 
+    /// Done closes Files from any folder, not just the top one.
+    private var doneButton: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button("Done", action: actions.close)
+                .accessibilityIdentifier("filesDoneButton")
+        }
+    }
+
     init(files: FileStore, actions: FileActions, startFolder: URL? = nil) {
         self.files = files
         self.actions = actions
@@ -38,13 +46,9 @@ struct FilesView: View {
             FolderView(folder: files.root, files: files, actions: actions)
                 .navigationDestination(for: URL.self) { folder in
                     FolderView(folder: folder, files: files, actions: actions)
+                        .toolbar { doneButton }
                 }
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Done", action: actions.close)
-                            .accessibilityIdentifier("filesDoneButton")
-                    }
-                }
+                .toolbar { doneButton }
         }
         .onAppear {
             guard path.isEmpty, let startFolder, files.isSameOrInside(startFolder, files.root),
