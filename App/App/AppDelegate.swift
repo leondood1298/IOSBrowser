@@ -7,6 +7,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
         AppFolders.ensureDefaultFolders()
+        Diagnostics.shared.start()
+        _ = AppServices.shared
         return true
     }
 
@@ -16,5 +18,24 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         options: UIScene.ConnectionOptions
     ) -> UISceneConfiguration {
         UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+    }
+
+    /// Closed windows take their untitled tab group with them.
+    func application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>) {
+        let store = AppServices.shared.tabStore
+        for session in sceneSessions {
+            guard let id = SceneDelegate.groupID(in: session), let group = store.group(withID: id), group.title == nil
+            else { continue }
+            store.remove(group)
+        }
+    }
+
+    func applicationWillTerminate(_ application: UIApplication) {
+        AppServices.shared.tabStore.saveNow()
+    }
+
+    override func buildMenu(with builder: UIMenuBuilder) {
+        super.buildMenu(with: builder)
+        MainMenu.build(with: builder)
     }
 }
