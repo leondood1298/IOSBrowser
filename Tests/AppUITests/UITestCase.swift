@@ -56,8 +56,9 @@ class UITestCase: XCTestCase {
         XCTAssertTrue(app.webViews.staticTexts[text].waitForExistence(timeout: timeout), "\(text) didn't appear")
     }
 
-    /// Opens a private tab from the New Tab button's menu. (Typing ⇧⌘N isn't reliable in UI
-    /// tests: with the on-screen keyboard up, the simulator types the letter into the field.)
+    /// Opens a private tab from the New Tab button's menu. (UI tests can't type ⇧⌘N: the CI
+    /// simulator has no hardware keyboard, so the on-screen keyboard types the letter, or nothing.
+    /// MainMenuTests checks the shortcut wiring instead.)
     @MainActor
     func openPrivateTab() {
         app.buttons["newTabButton"].press(forDuration: 1.2)
