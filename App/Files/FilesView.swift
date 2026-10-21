@@ -228,7 +228,9 @@ struct FolderView: View {
             }
             .overlay { emptyState }
         } else {
-            List(selection: $selection) {
+            // A selection binding only in Edit mode: with one, a tap on iPad selects a folder
+            // instead of opening it.
+            List(selection: editMode.isEditing ? $selection : nil) {
                 if isRoot && !isSearching {
                     Section { } header: { storageHeader }
                 }
