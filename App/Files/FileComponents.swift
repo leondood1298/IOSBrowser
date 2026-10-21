@@ -11,12 +11,19 @@ final class Thumbnails {
 
     func image(for item: FileItem, size: CGFloat, scale: CGFloat) async -> UIImage? {
         guard !item.isDirectory else { return nil }
-        let key = "\(item.url.path)|\(item.modified.timeIntervalSince1970)|\(Int(size))" as NSString
+        return await image(for: item.url, size: size, scale: scale, modified: item.modified)
+    }
+
+    func image(for url: URL, size: CGFloat, scale: CGFloat, modified: Date? = nil) async -> UIImage? {
+        let stamp = modified
+            ?? (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+            ?? .distantPast
+        let key = "\(url.path)|\(stamp.timeIntervalSince1970)|\(Int(size))" as NSString
         if let cached = cache.object(forKey: key) {
             return cached
         }
         let request = QLThumbnailGenerator.Request(
-            fileAt: item.url, size: CGSize(width: size, height: size), scale: scale, representationTypes: .thumbnail)
+            fileAt: url, size: CGSize(width: size, height: size), scale: scale, representationTypes: .thumbnail)
         guard let representation = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request) else {
             return nil
         }

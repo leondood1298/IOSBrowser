@@ -3,6 +3,22 @@ import Combine
 import UIKit
 
 /// The app's appearance setting.
+/// How the image and PDF viewers change pages.
+nonisolated enum ViewerTransition: String, CaseIterable, Identifiable, Sendable {
+    /// The next page simply appears.
+    case instant
+    case slide
+
+    var id: String { rawValue }
+
+    var name: String {
+        switch self {
+        case .instant: return "Instant"
+        case .slide: return "Slide"
+        }
+    }
+}
+
 nonisolated enum AppTheme: String, CaseIterable, Identifiable, Sendable {
     case system
     case light
@@ -77,6 +93,7 @@ final class Preferences: ObservableObject {
             Key.downloadParts: 4,
             Key.downloadNotifications: true,
             Key.useTrash: true,
+            Key.slideshowInterval: 3.0,
         ])
         if defaults.object(forKey: Key.installDate) == nil {
             defaults.set(Date(), forKey: Key.installDate)
@@ -115,6 +132,9 @@ final class Preferences: ObservableObject {
         static let downloadParts = "downloadParts"
         static let downloadNotifications = "downloadNotifications"
         static let useTrash = "useTrash"
+        static let viewerTransition = "viewerTransition"
+        static let slideshowInterval = "slideshowInterval"
+        static let pdfPages = "pdfPages"
     }
 
     // MARK: Privacy
@@ -278,6 +298,30 @@ final class Preferences: ObservableObject {
     var downloadNotifications: Bool {
         get { defaults.bool(forKey: Key.downloadNotifications) }
         set { objectWillChange.send(); defaults.set(newValue, forKey: Key.downloadNotifications) }
+    }
+
+    // MARK: Viewers
+
+    var viewerTransition: ViewerTransition {
+        get { ViewerTransition(rawValue: defaults.string(forKey: Key.viewerTransition) ?? "") ?? .instant }
+        set { objectWillChange.send(); defaults.set(newValue.rawValue, forKey: Key.viewerTransition) }
+    }
+
+    /// Seconds each image shows in a slideshow.
+    var slideshowInterval: Double {
+        get { defaults.double(forKey: Key.slideshowInterval) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.slideshowInterval) }
+    }
+
+    /// The page each PDF was left on, by its path under Documents.
+    var pdfPages: [String: Int] {
+        defaults.dictionary(forKey: Key.pdfPages) as? [String: Int] ?? [:]
+    }
+
+    func setPDFPage(_ page: Int, for path: String) {
+        var pages = pdfPages
+        pages[path] = page
+        defaults.set(pages, forKey: Key.pdfPages)
     }
 
     /// Deleted files go to the Trash for 30 days instead of being deleted right away.

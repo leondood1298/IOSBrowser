@@ -33,9 +33,9 @@ class UITestCase: XCTestCase {
 
     /// Launches with clean state. The first launch on a fresh CI simulator can take a while.
     @MainActor
-    func launch() {
+    func launch(extraArguments: [String] = []) {
         app = XCUIApplication()
-        app.launchArguments = ["--reset-state", "--ui-testing"]
+        app.launchArguments = ["--reset-state", "--ui-testing"] + extraArguments
         app.launch()
         XCTAssertTrue(app.textFields["urlField"].waitForExistence(timeout: 60))
     }
@@ -54,6 +54,17 @@ class UITestCase: XCTestCase {
     @MainActor
     func waitForText(_ text: String, timeout: TimeInterval = 60) {
         XCTAssertTrue(app.webViews.staticTexts[text].waitForExistence(timeout: timeout), "\(text) didn't appear")
+    }
+
+    /// Opens the file manager from the page menu and, if given, one of its top folders.
+    @MainActor
+    func openFilesFolder(_ name: String? = nil) {
+        app.buttons["moreButton"].tap()
+        tapMenuItem("Files")
+        guard let name else { return }
+        let folder = element("file-\(name)")
+        XCTAssertTrue(folder.waitForExistence(timeout: 15))
+        folder.tap()
     }
 
     /// Opens a private tab from the New Tab button's menu. (Typing ⇧⌘N isn't reliable in UI

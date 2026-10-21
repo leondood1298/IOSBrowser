@@ -27,6 +27,7 @@ struct SettingsView: View {
                 linksSection
                 downloadsSection
                 filesSection
+                viewersSection
                 aboutSection
             }
             .alert("Block Other Content Trackers?", isPresented: $confirmingContent) {
@@ -186,6 +187,25 @@ struct SettingsView: View {
             Text("Files")
         } footer: {
             Text("Deleted files stay in the Trash for 30 days, so you can put them back.")
+        }
+    }
+
+    private var viewersSection: some View {
+        Section {
+            Picker("Page Change", selection: binding(\.viewerTransition)) {
+                ForEach(ViewerTransition.allCases) { transition in
+                    Text(transition.name).tag(transition)
+                }
+            }
+            Picker("Slideshow", selection: binding(\.slideshowInterval)) {
+                ForEach([2.0, 3.0, 5.0, 10.0], id: \.self) { seconds in
+                    Text("\(Int(seconds)) Seconds").tag(seconds)
+                }
+            }
+        } header: {
+            Text("Images and PDFs")
+        } footer: {
+            Text("With Instant, the next image or page simply appears when you tap the edge, swipe or press an arrow key.")
         }
     }
 

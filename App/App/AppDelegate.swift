@@ -11,6 +11,11 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             AppFolders.eraseSavedState()
         }
         AppFolders.ensureDefaultFolders()
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--seed-viewer-files") {
+            TestFiles.writeViewerSamples()
+        }
+        #endif
         Diagnostics.shared.start()
         _ = AppServices.shared
         ContentBlocker.shared.start()

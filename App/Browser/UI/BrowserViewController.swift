@@ -2,6 +2,7 @@ import BrowserCore
 import Combine
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 import WebKit
 
 /// The browser itself: toolbar with the address field, the tab strip, and the selected tab's
@@ -655,7 +656,7 @@ final class BrowserViewController: UIViewController {
             Toast.show("The file was moved or deleted", systemImage: "exclamationmark.triangle", in: view)
             return
         }
-        present(FilePreviewController(fileURL: item.fileURL), animated: true)
+        openFile(at: item.fileURL)
     }
 
     private func shareDownloadedFile(_ item: DownloadItem) {
@@ -708,10 +709,34 @@ final class BrowserViewController: UIViewController {
         return top
     }
 
+    /// Images open in the image viewer with the folder's other images, PDFs in the PDF viewer,
+    /// everything else in Quick Look.
     private func openFile(_ item: FileItem, among siblings: [FileItem]) {
-        let urls = siblings.contains(item) ? siblings.map(\.url) : [item.url]
-        let index = urls.firstIndex(of: item.url) ?? 0
-        topController.present(FilePreviewController(fileURLs: urls, index: index), animated: true)
+        if item.isImage && ImageLoader.canShow(item.url) {
+            let images = siblings.filter { $0.isImage && ImageLoader.canShow($0.url) }.map(\.url)
+            let urls = images.contains(item.url) ? images : [item.url]
+            let viewer = ImageViewerController(
+                urls: urls, index: urls.firstIndex(of: item.url) ?? 0, files: services.files, preferences: services.preferences)
+            topController.present(viewer, animated: true)
+        } else if item.contentType?.conforms(to: .pdf) == true {
+            let viewer = UINavigationController(
+                rootViewController: PDFViewerController(url: item.url, preferences: services.preferences))
+            viewer.modalPresentationStyle = .fullScreen
+            topController.present(viewer, animated: true)
+        } else {
+            let urls = siblings.contains(item) ? siblings.map(\.url) : [item.url]
+            let index = urls.firstIndex(of: item.url) ?? 0
+            topController.present(FilePreviewController(fileURLs: urls, index: index), animated: true)
+        }
+    }
+
+    /// Opens a file at `url` the way the file manager would, with the other files in its folder.
+    func openFile(at url: URL) {
+        guard let item = FileItem(url: url) else { return }
+        let siblings = services.files.contents(of: url.deletingLastPathComponent())
+            .filter { !$0.isDirectory }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        openFile(item, among: siblings)
     }
 
     private func shareFiles(_ urls: [URL]) {
