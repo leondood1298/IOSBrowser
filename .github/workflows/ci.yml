@@ -27,6 +27,9 @@ jobs:
       - name: BrowserCore tests
         run: swift test --package-path Packages/BrowserCore 2>&1 | tee core.log
 
+      - name: MediaKit tests
+        run: swift test --package-path Packages/MediaKit 2>&1 | tee media.log
+
       - name: Pick simulator
         run: echo "SIM_ID=$(bash scripts/pick_simulator.sh)" >> "$GITHUB_ENV"
 
@@ -45,7 +48,7 @@ jobs:
 
       - name: Error summary
         if: failure()
-        run: bash scripts/error_summary.sh core.log build.log test.log
+        run: bash scripts/error_summary.sh core.log media.log build.log test.log
 
       - name: Upload logs
         if: failure()

@@ -27,6 +27,8 @@ settings:
 packages:
   BrowserCore:
     path: Packages/BrowserCore
+  MediaKit:
+    path: Packages/MediaKit
   ZIPFoundation:
     url: https://github.com/weichsel/ZIPFoundation
     exactVersion: 0.9.20
@@ -47,6 +49,7 @@ targets:
           - "Info.plist"
     dependencies:
       - package: BrowserCore
+      - package: MediaKit
       - package: ZIPFoundation
       - package: SWCompression
       - package: Unrar

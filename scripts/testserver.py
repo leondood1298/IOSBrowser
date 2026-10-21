@@ -25,6 +25,10 @@ CHUNK = 64 * 1024
 # Byte at offset p is p % 256; a 64 KiB block repeats exactly, so any range can be sliced from it.
 PATTERN = bytes(i % 256 for i in range(CHUNK))
 SIZE_RE = re.compile(r"^/generated/(\d+)(KB|MB|B)\.bin$", re.IGNORECASE)
+# Streaming types the system's table may not know (HLS playlists and segments).
+for media_type, extension in [("application/vnd.apple.mpegurl", ".m3u8"), ("video/mp2t", ".ts"),
+                              ("video/iso.segment", ".m4s"), ("video/mp4", ".mp4"), ("audio/aac", ".aac")]:
+    mimetypes.add_type(media_type, extension)
 
 
 class Handler(SimpleHTTPRequestHandler):
