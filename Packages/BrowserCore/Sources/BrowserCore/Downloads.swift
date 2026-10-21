@@ -24,7 +24,7 @@ public enum DownloadState: String, Codable, Sendable, CaseIterable {
             return true
         case (.running, .queued), (.running, .paused), (.running, .finished), (.running, .failed), (.running, .cancelled):
             return true
-        case (.paused, .queued), (.paused, .failed), (.paused, .cancelled):
+        case (.paused, .queued), (.paused, .running), (.paused, .failed), (.paused, .cancelled):
             return true
         case (.failed, .queued), (.cancelled, .queued):
             return true
@@ -56,12 +56,15 @@ public struct DownloadRecord: Codable, Sendable, Identifiable, Hashable {
     public var isPrivate: Bool
     public var created: Date
     public var finished: Date?
+    /// Set when the background URLSession engine runs the download: how many parts it's fetched
+    /// in (1 for the whole file). Nil when WebKit runs it.
+    public var sessionParts: Int?
 
     public init(
         id: UUID = UUID(), sourceURL: URL?, pageURL: URL?, fileName: String, folder: String,
         mimeType: String? = nil, expectedBytes: Int64? = nil, receivedBytes: Int64 = 0,
         state: DownloadState = .queued, failureReason: String? = nil, linkExpired: Bool = false,
-        isPrivate: Bool = false, created: Date = Date(), finished: Date? = nil
+        isPrivate: Bool = false, created: Date = Date(), finished: Date? = nil, sessionParts: Int? = nil
     ) {
         self.id = id
         self.sourceURL = sourceURL
@@ -77,6 +80,13 @@ public struct DownloadRecord: Codable, Sendable, Identifiable, Hashable {
         self.isPrivate = isPrivate
         self.created = created
         self.finished = finished
+        self.sessionParts = sessionParts
+    }
+
+    /// The byte ranges of a session download's parts (empty for one part fetched whole).
+    public var partRanges: [ClosedRange<Int64>] {
+        guard let parts = sessionParts, parts > 1, let expectedBytes else { return [] }
+        return RangePlanner.ranges(totalBytes: expectedBytes, parts: parts, minimumPartSize: 1)
     }
 
     /// 0…1, or nil while the size isn't known.
@@ -300,6 +310,58 @@ public struct DataURL: Sendable, Equatable {
     /// "download.png" and so on; "download" when the type is unknown.
     public var suggestedFileName: String {
         Self.extensions[mimeType].map { "download.\($0)" } ?? "download"
+    }
+}
+
+/// One part of a download run by a background URLSession. It's written into the session task's
+/// description, so tasks can be matched to downloads after the app is relaunched:
+/// "<download id>|<part index>|<part count>|<first byte>|<last byte>" (the bytes are "-" for a
+/// file fetched whole).
+public struct DownloadPart: Hashable, Sendable {
+    public var downloadID: UUID
+    public var index: Int
+    public var count: Int
+    /// Nil when the whole file is fetched in one request without a Range header.
+    public var range: ClosedRange<Int64>?
+
+    public init(downloadID: UUID, index: Int, count: Int, range: ClosedRange<Int64>?) {
+        self.downloadID = downloadID
+        self.index = index
+        self.count = count
+        self.range = range
+    }
+
+    public init?(taskDescription: String) {
+        let fields = taskDescription.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        guard fields.count == 5, let id = UUID(uuidString: fields[0]),
+              let index = Int(fields[1]), let count = Int(fields[2]), count > 0, index >= 0, index < count
+        else { return nil }
+        downloadID = id
+        self.index = index
+        self.count = count
+        if fields[3] == "-" && fields[4] == "-" {
+            range = nil
+        } else if let first = Int64(fields[3]), let last = Int64(fields[4]), first <= last {
+            range = first...last
+        } else {
+            return nil
+        }
+    }
+
+    public var taskDescription: String {
+        let bytes = range.map { "\($0.lowerBound)|\($0.upperBound)" } ?? "-|-"
+        return "\(downloadID.uuidString)|\(index)|\(count)|\(bytes)"
+    }
+
+    /// The parts of a download: one per range, or a single whole-file part.
+    public static func parts(of id: UUID, ranges: [ClosedRange<Int64>]) -> [DownloadPart] {
+        guard ranges.count > 1 else { return [DownloadPart(downloadID: id, index: 0, count: 1, range: nil)] }
+        return ranges.enumerated().map { DownloadPart(downloadID: id, index: $0.offset, count: ranges.count, range: $0.element) }
+    }
+
+    /// The size the part's file has when complete (nil for a whole file of unknown size).
+    public var expectedLength: Int64? {
+        range.map { $0.upperBound - $0.lowerBound + 1 }
     }
 }
 

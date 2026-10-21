@@ -161,10 +161,20 @@ struct SettingsView: View {
             }
             .disabled(preferences.sortDownloadsByType)
             Toggle("Sort by File Type", isOn: binding(\.sortDownloadsByType))
+            Toggle("Live Activity", isOn: binding(\.downloadLiveActivity))
+            Toggle("Notifications", isOn: binding(\.downloadNotifications))
+            Toggle("Background Downloads", isOn: binding(\.backgroundDownloads))
+            Picker("Parts per Download", selection: binding(\.downloadParts)) {
+                Text("1 (off)").tag(1)
+                Text("2").tag(2)
+                Text("4").tag(4)
+                Text("8").tag(8)
+            }
+            .disabled(!preferences.backgroundDownloads)
         } header: {
             Text("Downloads")
         } footer: {
-            Text("Sorting puts videos in Videos, music in Music, images in Pictures and documents in Documents. Other files go to Downloads.")
+            Text("Sorting puts videos in Videos, music in Music, images in Pictures and documents in Documents. Other files go to Downloads. The Live Activity shows progress on the Lock Screen and keeps downloads going after you leave the app. Background downloads continue even when the app is closed; big files can be fetched in several parts at once, which is faster on most servers.")
         }
     }
 

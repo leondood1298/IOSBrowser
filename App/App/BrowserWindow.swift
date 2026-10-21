@@ -32,6 +32,7 @@ final class BrowserWindow: UIWindow {
     @objc func zoomOutCommand(_ sender: Any?) { browser?.zoomOutCommand(sender) }
     @objc func actualSizeCommand(_ sender: Any?) { browser?.actualSizeCommand(sender) }
     @objc func showSettingsCommand(_ sender: Any?) { browser?.showSettingsCommand(sender) }
+    @objc func showDownloadsCommand(_ sender: Any?) { browser?.showDownloadsCommand(sender) }
     @objc func eraseCommand(_ sender: Any?) { browser?.eraseCommand(sender) }
     @objc func selectTabCommand(_ sender: UICommand) { browser?.selectTabCommand(sender) }
 }

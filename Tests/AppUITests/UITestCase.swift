@@ -35,7 +35,7 @@ class UITestCase: XCTestCase {
     @MainActor
     func launch() {
         app = XCUIApplication()
-        app.launchArguments = ["--reset-state"]
+        app.launchArguments = ["--reset-state", "--ui-testing"]
         app.launch()
         XCTAssertTrue(app.textFields["urlField"].waitForExistence(timeout: 60))
     }

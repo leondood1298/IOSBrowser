@@ -3,10 +3,13 @@ import Combine
 import UIKit
 import WebKit
 
-/// Every download in the app. Downloads run through WebKit, so a tab's cookies, user agent and
-/// private storage apply. The manager asks where to save, tracks progress, pauses and resumes,
-/// and moves finished files from a hidden staging folder into their folder in Files.
-/// Normal downloads are listed across launches; private ones are kept in memory until Erase.
+/// Every download in the app. Downloads start in WebKit, so a tab's cookies, user agent and
+/// private storage apply. Normal-tab downloads that can be resumed then move to a background
+/// URLSession (`SessionDownloader`), which keeps going while the app is suspended and can fetch
+/// big files in several parts at once; everything else stays with WebKit. The manager asks where
+/// to save, tracks progress, pauses and resumes, and moves finished files from a hidden staging
+/// folder into their folder in Files. Normal downloads are listed across launches; private ones
+/// are kept in memory until Erase.
 final class DownloadManager: NSObject, ObservableObject {
     @Published private(set) var items: [DownloadItem] = []
     /// Overall progress of the running downloads (0…1), or nil when nothing with a known size runs.
@@ -39,6 +42,17 @@ final class DownloadManager: NSObject, ObservableObject {
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
     private var pendingBackgroundPauses = 0
     private var lifecycleObservers: [NSObjectProtocol] = []
+    /// The system Live Activity for running downloads.
+    private let activity = DownloadActivity()
+    private lazy var notifier = DownloadNotifier { [weak self] in self?.preferences.downloadNotifications ?? false }
+    /// The background engine and what it's doing.
+    private let sessionEngine: SessionDownloader
+    private var sessionRunning: Set<UUID> = []
+    private var partBytes: [UUID: [Int: Int64]] = [:]
+    private var merging: Set<UUID> = []
+    private var defaultUserAgent: String?
+    /// The system's completion handler while it runs the app for background download events.
+    var backgroundEventsCompletion: (() -> Void)?
 
     static var defaultDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -53,15 +67,22 @@ final class DownloadManager: NSObject, ObservableObject {
         self.preferences = preferences
         self.file = file
         self.directory = directory
+        sessionEngine = SessionDownloader(directory: directory.appendingPathComponent("Parts", isDirectory: true))
         super.init()
         let saved = file.load() ?? []
-        let reconciled = DownloadScheduler.reconcileAfterLaunch(saved) { [directory] id in
+        // WebKit downloads stopped with the app; background ones may still be running (see below).
+        let webKit = DownloadScheduler.reconcileAfterLaunch(saved.filter { $0.sessionParts == nil }) { [directory] id in
             FileManager.default.fileExists(atPath: Self.resumeDataURL(for: id, in: directory).path)
         }
+        let byID = Dictionary(uniqueKeysWithValues: webKit.map { ($0.id, $0) })
+        let reconciled = saved.map { byID[$0.id] ?? $0 }
         items = reconciled.map(makeItem)
         if reconciled != saved {
             save()
         }
+        sessionEngine.connect { [weak self] event in self?.handle(event) }
+        Task { [weak self] in await self?.reconcileSessionDownloads() }
+        activity.onExpire = { [weak self] in self?.pauseAllForBackground() }
         let center = NotificationCenter.default
         lifecycleObservers = [
             center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
@@ -144,18 +165,29 @@ final class DownloadManager: NSObject, ObservableObject {
     // MARK: - Controlling
 
     func pause(_ item: DownloadItem) {
+        if item.record.sessionParts != nil {
+            pauseSession(item, reason: nil)
+            return
+        }
         guard let download = active[item.id], item.move(to: .paused) else { return }
         stop(download, item: item)
     }
 
     func resume(_ item: DownloadItem) {
         guard item.record.state == .paused else { return }
+        if item.record.sessionParts != nil {
+            guard item.move(to: .running, change: { $0.failureReason = nil }) else { return }
+            startSessionParts(item)
+            showInLiveActivity(item)
+            return
+        }
         guard let data = try? Data(contentsOf: resumeDataURL(for: item.id)) else {
             retry(item)
             return
         }
         guard item.move(to: .running, change: { $0.failureReason = nil }) else { return }
         resuming.insert(item.id)
+        showInLiveActivity(item)
         helperWebView(isPrivate: item.record.isPrivate).resumeDownload(fromResumeData: data) { [weak self] download in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -168,6 +200,11 @@ final class DownloadManager: NSObject, ObservableObject {
     /// Starts a failed or cancelled download again from its address.
     func retry(_ item: DownloadItem) {
         guard item.record.canRetry, let url = item.record.sourceURL else { return }
+        // Retries run in WebKit, the way the page itself would fetch the file.
+        if item.record.sessionParts != nil {
+            removeSessionFiles(for: item.id)
+            item.update { $0.sessionParts = nil }
+        }
         removeResumeData(for: item.id)
         removePartialFile(for: item.id)
         let moved = item.move(to: .queued) { record in
@@ -182,6 +219,7 @@ final class DownloadManager: NSObject, ObservableObject {
             return
         }
         item.move(to: .running)
+        showInLiveActivity(item)
         helperWebView(isPrivate: item.record.isPrivate).startDownload(using: URLRequest(url: url)) { [weak self] download in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -194,10 +232,16 @@ final class DownloadManager: NSObject, ObservableObject {
 
     func cancel(_ item: DownloadItem) {
         let download = active[item.id]
+        let usesSession = item.record.sessionParts != nil
         guard item.move(to: .cancelled) else { return }
         if let download {
             untrack(download)
             download.cancel { _ in }
+        }
+        if usesSession {
+            sessionRunning.remove(item.id)
+            removeSessionFiles(for: item.id)
+            updateCounts()
         }
         resuming.remove(item.id)
         removeResumeData(for: item.id)
@@ -263,7 +307,7 @@ final class DownloadManager: NSObject, ObservableObject {
     /// Keeps downloads going for a while after the app leaves the screen; when that time runs
     /// out they're paused with what's needed to continue later.
     func appDidEnterBackground() {
-        guard !active.isEmpty, backgroundTask == .invalid else { return }
+        guard !active.isEmpty, backgroundTask == .invalid, !activity.isRunning else { return }
         backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Downloads") { [weak self] in
             MainActor.assumeIsolated {
                 self?.pauseAllForBackground()
@@ -273,6 +317,7 @@ final class DownloadManager: NSObject, ObservableObject {
 
     func appWillEnterForeground() {
         endBackgroundTask()
+        notifier.clearBadge()
     }
 
     private func pauseAllForBackground() {
@@ -303,8 +348,22 @@ final class DownloadManager: NSObject, ObservableObject {
 
     private func makeItem(_ record: DownloadRecord) -> DownloadItem {
         let item = DownloadItem(record: record)
-        item.onStateChange = { [weak self] in self?.objectWillChange.send() }
+        item.onStateChange = { [weak self, weak item] in
+            guard let self else { return }
+            self.objectWillChange.send()
+            self.activity.update(with: self.items)
+            if let item {
+                self.notifier.stateChanged(item)
+            }
+        }
         return item
+    }
+
+    private func showInLiveActivity(_ item: DownloadItem) {
+        notifier.prepare()
+        // UI tests skip it: the simulator can't show it, and system banners could cover the toolbar.
+        guard preferences.downloadLiveActivity, !ProcessInfo.processInfo.arguments.contains("--ui-testing") else { return }
+        activity.downloadStarted(item.id, title: "Downloading \(item.record.fileName)")
     }
 
     private func track(_ download: WKDownload, as id: UUID) {
@@ -419,6 +478,208 @@ final class DownloadManager: NSObject, ObservableObject {
         return webView
     }
 
+    // MARK: Background engine
+
+    /// Normal-tab GET downloads with a known size from servers that accept byte ranges.
+    private func canUseSession(origin: Origin, request: URLRequest, response: URLResponse) -> Bool {
+        guard preferences.backgroundDownloads, !origin.isPrivate,
+              let http = response as? HTTPURLResponse, http.statusCode == 200,
+              response.expectedContentLength > 0,
+              (request.httpMethod ?? "GET").uppercased() == "GET",
+              let scheme = request.url?.scheme?.lowercased(), scheme == "http" || scheme == "https"
+        else { return false }
+        return (http.value(forHTTPHeaderField: "Accept-Ranges") ?? "").lowercased().contains("bytes")
+    }
+
+    private func sessionParts(for record: DownloadRecord) -> [DownloadPart] {
+        DownloadPart.parts(of: record.id, ranges: record.partRanges)
+    }
+
+    /// Starts (or continues) every part that isn't finished yet.
+    private func startSessionParts(_ item: DownloadItem, url: URL? = nil) {
+        guard let url = url ?? item.record.sourceURL else { return }
+        var request = URLRequest(url: url)
+        if let agent = defaultUserAgent {
+            request.setValue(agent, forHTTPHeaderField: "User-Agent")
+        }
+        if let page = item.record.pageURL, ["http", "https"].contains(page.scheme?.lowercased() ?? "") {
+            request.setValue(page.absoluteString, forHTTPHeaderField: "Referer")
+        }
+        sessionRunning.insert(item.id)
+        partBytes[item.id] = [:]
+        for part in sessionParts(for: item.record) {
+            if sessionEngine.isFinished(part) {
+                partBytes[item.id]?[part.index] = part.expectedLength ?? 0
+                continue
+            }
+            let resumeURL = sessionEngine.resumeDataURL(part)
+            if let data = try? Data(contentsOf: resumeURL) {
+                try? FileManager.default.removeItem(at: resumeURL)
+                sessionEngine.resume(part, resumeData: data)
+            } else {
+                sessionEngine.start(part, request: request)
+            }
+        }
+        if sessionParts(for: item.record).allSatisfy(sessionEngine.isFinished) {
+            mergeParts(of: item)
+        }
+        updateCounts()
+        startProgressTimer()
+    }
+
+    /// Pauses every part, keeping resume data, so the download continues as a whole later.
+    private func pauseSession(_ item: DownloadItem, reason: String?) {
+        guard item.move(to: .paused, change: { $0.failureReason = reason }) else { return }
+        sessionRunning.remove(item.id)
+        updateCounts()
+        let id = item.id
+        Task {
+            let saved = await sessionEngine.pause(id)
+            for (part, data) in saved {
+                try? FileManager.default.createDirectory(at: sessionEngine.folder(for: id), withIntermediateDirectories: true)
+                try? data.write(to: sessionEngine.resumeDataURL(part), options: .atomic)
+            }
+            save()
+        }
+    }
+
+    private func removeSessionFiles(for id: UUID) {
+        let folder = sessionEngine.folder(for: id)
+        Task {
+            await sessionEngine.cancel(id)
+            try? FileManager.default.removeItem(at: folder)
+        }
+    }
+
+    private func handle(_ event: SessionDownloader.Event) {
+        switch event {
+        case .progress(let part, let written):
+            guard let item = item(part.downloadID), item.record.state == .running else { return }
+            partBytes[part.downloadID, default: [:]][part.index] = written
+            let received = partBytes[part.downloadID]?.values.reduce(0, +) ?? written
+            item.progress(received: received, expected: item.record.expectedBytes, at: ProcessInfo.processInfo.systemUptime)
+        case .finished(let part):
+            guard let item = item(part.downloadID), item.record.state == .running else { return }
+            if let length = part.expectedLength {
+                partBytes[part.downloadID, default: [:]][part.index] = length
+            }
+            if sessionParts(for: item.record).allSatisfy(sessionEngine.isFinished) {
+                mergeParts(of: item)
+            }
+        case .failed(let part, let message, let resumeData, let status):
+            guard let item = item(part.downloadID), item.record.state == .running else { return }
+            if let resumeData {
+                try? FileManager.default.createDirectory(
+                    at: sessionEngine.folder(for: part.downloadID), withIntermediateDirectories: true)
+                try? resumeData.write(to: sessionEngine.resumeDataURL(part), options: .atomic)
+            }
+            if let status, status >= 400 || (part.range != nil && status == 200) {
+                // The server won't serve the file the way this engine asks; WebKit tries once more.
+                sessionRunning.remove(item.id)
+                item.move(to: .failed) { $0.failureReason = Self.reason(forStatus: status) }
+                retry(item)
+            } else {
+                pauseSession(item, reason: message)
+            }
+        case .allEventsDelivered:
+            backgroundEventsCompletion?()
+            backgroundEventsCompletion = nil
+        }
+    }
+
+    /// After a relaunch: downloads still running in the background carry on; ones that finished
+    /// meanwhile are put together; the rest are paused (or failed when nothing can continue).
+    private func reconcileSessionDownloads() async {
+        let running = await sessionEngine.tasks()
+        for item in items where item.record.sessionParts != nil && item.record.state == .running {
+            let parts = sessionParts(for: item.record)
+            if running[item.id] != nil {
+                sessionRunning.insert(item.id)
+                startProgressTimer()
+            } else if parts.allSatisfy(sessionEngine.isFinished) {
+                mergeParts(of: item)
+            } else {
+                let fileManager = FileManager.default
+                let canContinue = parts.contains {
+                    fileManager.fileExists(atPath: sessionEngine.resumeDataURL($0).path) || sessionEngine.isFinished($0)
+                }
+                item.move(to: canContinue ? .paused : .failed) {
+                    $0.failureReason = canContinue ? "Paused while the app was closed" : "The download was interrupted."
+                }
+            }
+        }
+        updateCounts()
+        save()
+    }
+
+    /// Joins the parts into the staging file, off the main thread, then finishes as usual.
+    private func mergeParts(of item: DownloadItem) {
+        guard !merging.contains(item.id) else { return }
+        merging.insert(item.id)
+        sessionRunning.remove(item.id)
+        let parts = sessionParts(for: item.record).map(sessionEngine.partFileURL)
+        let output = partialFileURL(for: item.record)
+        let folder = sessionEngine.folder(for: item.id)
+        Task {
+            let error = await Self.concatenate(parts, into: output)
+            merging.remove(item.id)
+            if let error {
+                item.move(to: .failed) { $0.failureReason = "The parts couldn't be joined: \(error.localizedDescription)" }
+                save()
+            } else {
+                try? FileManager.default.removeItem(at: folder)
+                finish(item)
+            }
+            updateCounts()
+        }
+    }
+
+    nonisolated private static func concatenate(_ parts: [URL], into output: URL) async -> Error? {
+        await Task.detached(priority: .utility) { () -> Error? in
+            let fileManager = FileManager.default
+            do {
+                try fileManager.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? fileManager.removeItem(at: output)
+                if parts.count == 1 {
+                    try fileManager.moveItem(at: parts[0], to: output)
+                    return nil
+                }
+                fileManager.createFile(atPath: output.path, contents: nil)
+                let writer = try FileHandle(forWritingTo: output)
+                defer { try? writer.close() }
+                for part in parts {
+                    let reader = try FileHandle(forReadingFrom: part)
+                    defer { try? reader.close() }
+                    while let chunk = try reader.read(upToCount: 4 << 20), !chunk.isEmpty {
+                        try writer.write(contentsOf: chunk)
+                    }
+                }
+                return nil
+            } catch {
+                return error
+            }
+        }.value
+    }
+
+    /// The background session sends the normal store's cookies, so downloads behind a login work.
+    private func copyCookiesToSharedStorage() async {
+        let cookies = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
+        for cookie in cookies {
+            HTTPCookieStorage.shared.setCookie(cookie)
+        }
+    }
+
+    /// The user agent the page used, so the server sees the same browser.
+    private func rememberUserAgent(from webView: WKWebView?) async {
+        if let custom = webView?.customUserAgent, !custom.isEmpty {
+            defaultUserAgent = custom
+            return
+        }
+        guard defaultUserAgent == nil else { return }
+        let source = webView ?? helperWebView(isPrivate: false)
+        defaultUserAgent = (try? await source.evaluateJavaScript("navigator.userAgent")) as? String
+    }
+
     // MARK: Progress
 
     private func startProgressTimer() {
@@ -439,7 +700,8 @@ final class DownloadManager: NSObject, ObservableObject {
             item.progress(received: max(0, progress.completedUnitCount), expected: expected, at: now)
         }
         updateCounts()
-        if active.isEmpty {
+        activity.update(with: items)
+        if active.isEmpty && sessionRunning.isEmpty {
             progressTimer?.invalidate()
             progressTimer = nil
         }
@@ -574,6 +836,26 @@ extension DownloadManager: WKDownloadDelegate {
             name = choice.fileName
             folder = choice.folder
         }
+        if let request = download.originalRequest, let expected, let fileURL = response.url ?? request.url,
+           canUseSession(origin: origin, request: request, response: response) {
+            // WebKit's request stops here; the background session fetches the file instead.
+            let parts = preferences.downloadParts > 1
+                ? max(1, RangePlanner.ranges(totalBytes: expected, parts: preferences.downloadParts, minimumPartSize: 2 << 20).count)
+                : 1
+            let record = DownloadRecord(
+                sourceURL: request.url ?? fileURL, pageURL: origin.pageURL, fileName: name, folder: folder,
+                mimeType: response.mimeType, expectedBytes: expected, state: .running, isPrivate: false,
+                sessionParts: parts)
+            let item = makeItem(record)
+            items.insert(item, at: 0)
+            save()
+            didStart.send(item)
+            showInLiveActivity(item)
+            await copyCookiesToSharedStorage()
+            await rememberUserAgent(from: download.webView)
+            startSessionParts(item, url: fileURL)
+            return nil
+        }
         var record = DownloadRecord(
             sourceURL: download.originalRequest?.url ?? response.url, pageURL: origin.pageURL, fileName: name,
             folder: folder, mimeType: response.mimeType, expectedBytes: expected, state: .running,
@@ -591,6 +873,7 @@ extension DownloadManager: WKDownloadDelegate {
         track(download, as: item.id)
         save()
         didStart.send(item)
+        showInLiveActivity(item)
         return preparePartialFile(for: record)
     }
 

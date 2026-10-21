@@ -35,6 +35,19 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         }
     }
 
+    /// The system ran the app for the background download session; it's finished when the session
+    /// has delivered its events.
+    func application(
+        _ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        guard identifier == SessionDownloader.sessionIdentifier else {
+            completionHandler()
+            return
+        }
+        AppServices.shared.downloads.backgroundEventsCompletion = completionHandler
+    }
+
     func applicationWillTerminate(_ application: UIApplication) {
         AppServices.shared.tabStore.saveNow()
     }

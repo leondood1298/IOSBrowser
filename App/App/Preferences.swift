@@ -72,6 +72,10 @@ final class Preferences: ObservableObject {
             Key.confirmDownloads: true,
             Key.downloadFolder: "Downloads",
             Key.sortDownloadsByType: false,
+            Key.downloadLiveActivity: true,
+            Key.backgroundDownloads: true,
+            Key.downloadParts: 4,
+            Key.downloadNotifications: true,
         ])
         if defaults.object(forKey: Key.installDate) == nil {
             defaults.set(Date(), forKey: Key.installDate)
@@ -105,6 +109,10 @@ final class Preferences: ObservableObject {
         static let confirmDownloads = "confirmDownloads"
         static let downloadFolder = "downloadFolder"
         static let sortDownloadsByType = "sortDownloadsByType"
+        static let downloadLiveActivity = "downloadLiveActivity"
+        static let backgroundDownloads = "backgroundDownloads"
+        static let downloadParts = "downloadParts"
+        static let downloadNotifications = "downloadNotifications"
     }
 
     // MARK: Privacy
@@ -249,6 +257,31 @@ final class Preferences: ObservableObject {
     var sortDownloadsByType: Bool {
         get { defaults.bool(forKey: Key.sortDownloadsByType) }
         set { objectWillChange.send(); defaults.set(newValue, forKey: Key.sortDownloadsByType) }
+    }
+
+    /// Show running downloads in a Live Activity, which also keeps them going in the background.
+    var downloadLiveActivity: Bool {
+        get { defaults.bool(forKey: Key.downloadLiveActivity) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.downloadLiveActivity) }
+    }
+
+    /// Hand normal downloads that can be resumed to the system, so they continue while the app
+    /// is closed.
+    var backgroundDownloads: Bool {
+        get { defaults.bool(forKey: Key.backgroundDownloads) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.backgroundDownloads) }
+    }
+
+    /// A notification when a download finishes or fails while the app isn't in front.
+    var downloadNotifications: Bool {
+        get { defaults.bool(forKey: Key.downloadNotifications) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.downloadNotifications) }
+    }
+
+    /// How many parts a background download is fetched in at once (1 turns it off).
+    var downloadParts: Int {
+        get { min(max(defaults.integer(forKey: Key.downloadParts), 1), 8) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.downloadParts) }
     }
 
     /// Page zoom for sites without their own setting (1.0 = 100%).

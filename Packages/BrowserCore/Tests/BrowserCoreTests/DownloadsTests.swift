@@ -11,6 +11,7 @@ final class DownloadsTests: XCTestCase {
     func testStateMoves() {
         XCTAssertTrue(DownloadState.running.canMove(to: .paused))
         XCTAssertTrue(DownloadState.paused.canMove(to: .queued))
+        XCTAssertTrue(DownloadState.paused.canMove(to: .running))
         XCTAssertTrue(DownloadState.failed.canMove(to: .queued))
         XCTAssertFalse(DownloadState.finished.canMove(to: .running))
         XCTAssertFalse(DownloadState.cancelled.canMove(to: .finished))
@@ -117,6 +118,40 @@ final class DownloadsTests: XCTestCase {
         XCTAssertEqual(String(decoding: unpadded.data, as: UTF8.self), "Hi")
         XCTAssertNil(DataURL(string: "https://example.com"))
         XCTAssertNil(DataURL(string: "data:text/plain;base64,***"))
+    }
+
+    func testDownloadPartDescriptions() throws {
+        let id = UUID()
+        let part = DownloadPart(downloadID: id, index: 2, count: 4, range: 100...199)
+        XCTAssertEqual(DownloadPart(taskDescription: part.taskDescription), part)
+        XCTAssertEqual(part.expectedLength, 100)
+
+        let whole = DownloadPart(downloadID: id, index: 0, count: 1, range: nil)
+        XCTAssertTrue(whole.taskDescription.hasSuffix("|0|1|-|-"))
+        XCTAssertEqual(DownloadPart(taskDescription: whole.taskDescription), whole)
+        XCTAssertNil(whole.expectedLength)
+
+        XCTAssertNil(DownloadPart(taskDescription: "not a part"))
+        XCTAssertNil(DownloadPart(taskDescription: "\(id.uuidString)|4|4|0|9"))
+        XCTAssertNil(DownloadPart(taskDescription: "\(id.uuidString)|0|2|9|0"))
+    }
+
+    func testPartsOfADownload() {
+        let id = UUID()
+        XCTAssertEqual(DownloadPart.parts(of: id, ranges: []), [DownloadPart(downloadID: id, index: 0, count: 1, range: nil)])
+        let parts = DownloadPart.parts(of: id, ranges: [0...9, 10...19])
+        XCTAssertEqual(parts.map(\.index), [0, 1])
+        XCTAssertEqual(parts.map(\.count), [2, 2])
+        XCTAssertEqual(parts.last?.range, 10...19)
+
+        // The ranges of a saved record come out the same as when it started.
+        let started = RangePlanner.ranges(totalBytes: 9_000_000, parts: 4, minimumPartSize: 2_000_000)
+        var saved = record(.running)
+        saved.expectedBytes = 9_000_000
+        saved.sessionParts = started.count
+        XCTAssertEqual(saved.partRanges, started)
+        saved.sessionParts = 1
+        XCTAssertEqual(saved.partRanges, [])
     }
 
     func testRangePlanner() {

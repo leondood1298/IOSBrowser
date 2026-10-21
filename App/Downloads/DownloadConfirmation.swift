@@ -73,7 +73,9 @@ struct DownloadConfirmView: View {
     private var kind: String {
         let ext = (fileName as NSString).pathExtension
         let type = mimeType.flatMap { UTType(mimeType: $0) } ?? UTType(filenameExtension: ext)
-        return type?.localizedDescription ?? "File"
+        // Some descriptions are lowercase ("text").
+        let description = type?.localizedDescription ?? "File"
+        return description.prefix(1).uppercased() + description.dropFirst()
     }
 
     var body: some View {
