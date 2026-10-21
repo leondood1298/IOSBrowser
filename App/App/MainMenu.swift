@@ -24,7 +24,7 @@ enum MainMenu {
         ]), atStartOfMenu: .view)
         builder.insertChild(UIMenu(options: .displayInline, children: [
             command("Zoom In", #selector(BrowserViewController.zoomInCommand(_:)), "+"),
-            hidden(command("Zoom In", #selector(BrowserViewController.zoomInCommand(_:)), "=")),
+            command("Zoom In", #selector(BrowserViewController.zoomInCommand(_:)), "=", propertyList: "equals", hidden: true),
             command("Zoom Out", #selector(BrowserViewController.zoomOutCommand(_:)), "-"),
             command("Actual Size", #selector(BrowserViewController.actualSizeCommand(_:)), "0"),
         ]), atEndOfMenu: .view)
@@ -49,16 +49,16 @@ enum MainMenu {
         ]), atEndOfMenu: .window)
     }
 
-    /// A shortcut that works but doesn't show in the menu (an alternate key for the same command).
-    private static func hidden(_ command: UIKeyCommand) -> UIKeyCommand {
-        command.attributes = .hidden
-        return command
-    }
-
+    /// Commands must have unique (action, propertyList) pairs, or UIKit throws while building the
+    /// menu. An alternate key for the same action passes its own `propertyList` and is hidden.
     private static func command(
-        _ title: String, _ action: Selector, _ input: String, _ modifiers: UIKeyModifierFlags = .command
+        _ title: String, _ action: Selector, _ input: String, _ modifiers: UIKeyModifierFlags = .command,
+        propertyList: Any? = nil, hidden: Bool = false
     ) -> UIKeyCommand {
-        let command = UIKeyCommand(title: title, action: action, input: input, modifierFlags: modifiers)
+        let command = UIKeyCommand(
+            title: title, image: nil, action: action, input: input, modifierFlags: modifiers,
+            propertyList: propertyList, alternates: [], discoverabilityTitle: nil,
+            attributes: hidden ? .hidden : [], state: .off)
         command.wantsPriorityOverSystemBehavior = true
         return command
     }
