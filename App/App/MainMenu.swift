@@ -10,63 +10,103 @@ enum MainMenu {
         builder.remove(menu: .close)
         builder.remove(menu: .format)
 
-        builder.insertChild(UIMenu(options: .displayInline, children: [
-            command("New Tab", #selector(BrowserViewController.newTabCommand(_:)), "t"),
-            command("New Private Tab", #selector(BrowserViewController.newPrivateTabCommand(_:)), "n", [.command, .shift]),
-            command("Open Location…", #selector(BrowserViewController.openLocationCommand(_:)), "l"),
-            command("Close Tab", #selector(BrowserViewController.closeTabCommand(_:)), "w"),
-        ]), atStartOfMenu: .file)
-        builder.insertChild(UIMenu(options: .displayInline, children: [
-            command("Erase / Clear Browsing Data…", #selector(BrowserViewController.eraseCommand(_:)),
-                    UIKeyCommand.inputDelete, [.command, .shift]),
-        ]), atEndOfMenu: .file)
+        builder.insertChild(UIMenu(options: .displayInline, children: fileCommands), atStartOfMenu: .file)
+        builder.insertChild(UIMenu(options: .displayInline, children: eraseCommands), atEndOfMenu: .file)
+        builder.insertChild(UIMenu(options: .displayInline, children: viewCommands), atStartOfMenu: .view)
+        builder.insertChild(UIMenu(options: .displayInline, children: zoomCommands), atEndOfMenu: .view)
 
-        builder.insertChild(UIMenu(options: .displayInline, children: [
-            command("Reload Page", #selector(BrowserViewController.reloadCommand(_:)), "r"),
-            command("Stop", #selector(BrowserViewController.stopCommand(_:)), "."),
-            command("Show All Tabs", #selector(BrowserViewController.showAllTabsCommand(_:)), "\\", [.command, .shift]),
-            command("Show Downloads", #selector(BrowserViewController.showDownloadsCommand(_:)), "l", [.command, .alternate]),
-        ]), atStartOfMenu: .view)
-        builder.insertChild(UIMenu(options: .displayInline, children: [
-            command("Zoom In", #selector(BrowserViewController.zoomInCommand(_:)), "+"),
-            command("Zoom In", #selector(BrowserViewController.zoomInCommand(_:)), "=", propertyList: "equals", hidden: true),
-            command("Zoom Out", #selector(BrowserViewController.zoomOutCommand(_:)), "-"),
-            command("Actual Size", #selector(BrowserViewController.actualSizeCommand(_:)), "0"),
-        ]), atEndOfMenu: .view)
-
-        let history = UIMenu(title: "History", identifier: UIMenu.Identifier("io.github.leondood1298.browser.history"), children: [
-            command("Back", #selector(BrowserViewController.goBackCommand(_:)), "["),
-            command("Forward", #selector(BrowserViewController.goForwardCommand(_:)), "]"),
-            command("Reopen Closed Tab", #selector(BrowserViewController.reopenClosedTabCommand(_:)), "t", [.command, .shift]),
-            command("Show History", #selector(BrowserViewController.showHistoryCommand(_:)), "y"),
-        ])
+        let history = UIMenu(
+            title: "History", identifier: UIMenu.Identifier("io.github.leondood1298.browser.history"),
+            children: historyCommands)
         builder.insertSibling(history, afterMenu: .view)
-
-        let bookmarks = UIMenu(title: "Bookmarks", identifier: UIMenu.Identifier("io.github.leondood1298.browser.bookmarks"), children: [
-            command("Add Bookmark", #selector(BrowserViewController.addBookmarkCommand(_:)), "d"),
-            command("Show Bookmarks", #selector(BrowserViewController.showBookmarksCommand(_:)), "b", [.command, .alternate]),
-        ])
+        let bookmarks = UIMenu(
+            title: "Bookmarks", identifier: UIMenu.Identifier("io.github.leondood1298.browser.bookmarks"),
+            children: bookmarkCommands)
         builder.insertSibling(bookmarks, afterMenu: history.identifier)
 
-        var tabCommands = [
-            command("Show Next Tab", #selector(BrowserViewController.nextTabCommand(_:)), "\t", [.control]),
-            command("Show Previous Tab", #selector(BrowserViewController.previousTabCommand(_:)), "\t", [.control, .shift]),
-        ]
-        for number in 1...9 {
-            tabCommands.append(command(
-                number == 9 ? "Show Last Tab" : "Show Tab \(number)",
-                #selector(BrowserViewController.selectTabCommand(_:)), "\(number)",
-                propertyList: number, hidden: true))
-        }
         builder.insertChild(UIMenu(options: .displayInline, children: tabCommands), atEndOfMenu: .window)
 
         // Settings… (⌘,) replaces whatever the system puts in the app menu's settings slot.
-        let settings = command("Settings…", #selector(BrowserViewController.showSettingsCommand(_:)), ",")
+        let settings = settingsCommand
         if builder.menu(for: .preferences) != nil {
             builder.replaceChildren(ofMenu: .preferences) { _ in [settings] }
         } else {
             builder.insertSibling(UIMenu(options: .displayInline, children: [settings]), afterMenu: .about)
         }
+    }
+
+    /// Every command the browser adds. BrowserWindow must forward each one (a unit test checks).
+    static var allCommands: [UIKeyCommand] {
+        fileCommands + eraseCommands + viewCommands + zoomCommands + historyCommands + bookmarkCommands
+            + tabCommands + [settingsCommand]
+    }
+
+    private static var fileCommands: [UIKeyCommand] {
+        [
+            command("New Tab", #selector(BrowserViewController.newTabCommand(_:)), "t"),
+            command("New Private Tab", #selector(BrowserViewController.newPrivateTabCommand(_:)), "n", [.command, .shift]),
+            command("Open Location…", #selector(BrowserViewController.openLocationCommand(_:)), "l"),
+            command("Close Tab", #selector(BrowserViewController.closeTabCommand(_:)), "w"),
+        ]
+    }
+
+    private static var eraseCommands: [UIKeyCommand] {
+        [
+            command("Erase / Clear Browsing Data…", #selector(BrowserViewController.eraseCommand(_:)),
+                    UIKeyCommand.inputDelete, [.command, .shift]),
+        ]
+    }
+
+    private static var viewCommands: [UIKeyCommand] {
+        [
+            command("Reload Page", #selector(BrowserViewController.reloadCommand(_:)), "r"),
+            command("Stop", #selector(BrowserViewController.stopCommand(_:)), "."),
+            command("Show All Tabs", #selector(BrowserViewController.showAllTabsCommand(_:)), "\\", [.command, .shift]),
+            command("Show Downloads", #selector(BrowserViewController.showDownloadsCommand(_:)), "l", [.command, .alternate]),
+        ]
+    }
+
+    private static var zoomCommands: [UIKeyCommand] {
+        [
+            command("Zoom In", #selector(BrowserViewController.zoomInCommand(_:)), "+"),
+            command("Zoom In", #selector(BrowserViewController.zoomInCommand(_:)), "=", propertyList: "equals", hidden: true),
+            command("Zoom Out", #selector(BrowserViewController.zoomOutCommand(_:)), "-"),
+            command("Actual Size", #selector(BrowserViewController.actualSizeCommand(_:)), "0"),
+        ]
+    }
+
+    private static var historyCommands: [UIKeyCommand] {
+        [
+            command("Back", #selector(BrowserViewController.goBackCommand(_:)), "["),
+            command("Forward", #selector(BrowserViewController.goForwardCommand(_:)), "]"),
+            command("Reopen Closed Tab", #selector(BrowserViewController.reopenClosedTabCommand(_:)), "t", [.command, .shift]),
+            command("Show History", #selector(BrowserViewController.showHistoryCommand(_:)), "y"),
+        ]
+    }
+
+    private static var bookmarkCommands: [UIKeyCommand] {
+        [
+            command("Add Bookmark", #selector(BrowserViewController.addBookmarkCommand(_:)), "d"),
+            command("Show Bookmarks", #selector(BrowserViewController.showBookmarksCommand(_:)), "b", [.command, .alternate]),
+        ]
+    }
+
+    private static var tabCommands: [UIKeyCommand] {
+        var commands = [
+            command("Show Next Tab", #selector(BrowserViewController.nextTabCommand(_:)), "\t", [.control]),
+            command("Show Previous Tab", #selector(BrowserViewController.previousTabCommand(_:)), "\t", [.control, .shift]),
+        ]
+        for number in 1...9 {
+            commands.append(command(
+                number == 9 ? "Show Last Tab" : "Show Tab \(number)",
+                #selector(BrowserViewController.selectTabCommand(_:)), "\(number)",
+                propertyList: number, hidden: true))
+        }
+        return commands
+    }
+
+    private static var settingsCommand: UIKeyCommand {
+        command("Settings…", #selector(BrowserViewController.showSettingsCommand(_:)), ",")
     }
 
     /// Commands must have unique (action, propertyList) pairs, or UIKit throws while building the

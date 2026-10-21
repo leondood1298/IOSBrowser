@@ -9,6 +9,9 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         // UI tests launch with --reset-state so saved tabs from earlier runs don't leak in.
         if ProcessInfo.processInfo.arguments.contains("--reset-state") {
             AppFolders.eraseSavedState()
+            #if DEBUG
+            AnimationWatchdog.start()
+            #endif
         }
         AppFolders.ensureDefaultFolders()
         Diagnostics.shared.start()
