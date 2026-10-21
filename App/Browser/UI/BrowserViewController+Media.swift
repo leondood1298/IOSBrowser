@@ -1,4 +1,5 @@
 import BrowserCore
+import SwiftUI
 import UIKit
 
 /// The media button's picker and its actions: save, play or copy the video and audio found on
