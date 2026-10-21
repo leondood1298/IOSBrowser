@@ -277,7 +277,7 @@ extension BrowserViewController: WKNavigationDelegate {
         if URIFixup.webSchemes.contains(scheme) {
             return .allow
         }
-        UIApplication.shared.open(url)
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
         return .cancel
     }
 
