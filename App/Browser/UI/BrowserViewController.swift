@@ -116,6 +116,7 @@ final class BrowserViewController: UIViewController {
             .sink { [weak self] isPrivate in self?.applyPrivateAppearance(isPrivate) }
             .store(in: &modelObservers)
         observeDownloads()
+        observeAudio()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -667,6 +668,54 @@ final class BrowserViewController: UIViewController {
         PageActions.share(items: [item.fileURL], from: self, sourceView: displayedWebView ?? view)
     }
 
+    // MARK: - Music
+
+    private var miniPlayerHost: UIHostingController<MiniPlayerView>?
+
+    private func observeAudio() {
+        services.audio.$queue
+            .map(\.isEmpty)
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] empty in self?.setMiniPlayerVisible(!empty) }
+            .store(in: &modelObservers)
+    }
+
+    private func setMiniPlayerVisible(_ visible: Bool) {
+        if visible, miniPlayerHost == nil {
+            let host = UIHostingController(rootView: MiniPlayerView(audio: services.audio) { [weak self] in
+                self?.showAudioPlayer()
+            })
+            host.sizingOptions = .intrinsicContentSize
+            host.view.backgroundColor = .clear
+            addChild(host)
+            host.view.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(host.view)
+            let fill = host.view.widthAnchor.constraint(equalTo: view.widthAnchor, constant: -32)
+            fill.priority = .defaultHigh
+            NSLayoutConstraint.activate([
+                host.view.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                host.view.widthAnchor.constraint(lessThanOrEqualToConstant: 560),
+                fill,
+                host.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12),
+            ])
+            host.didMove(toParent: self)
+            miniPlayerHost = host
+        } else if !visible, let host = miniPlayerHost {
+            host.willMove(toParent: nil)
+            host.view.removeFromSuperview()
+            host.removeFromParent()
+            miniPlayerHost = nil
+        }
+    }
+
+    func showAudioPlayer() {
+        let player = UIHostingController(rootView: AudioPlayerView(audio: services.audio, playlists: services.playlists))
+        player.modalPresentationStyle = .formSheet
+        player.preferredContentSize = CGSize(width: 540, height: 780)
+        topController.present(player, animated: true)
+    }
+
     // MARK: - Files
 
     /// Opens the file manager, at `folder` if given.
@@ -697,6 +746,24 @@ final class BrowserViewController: UIViewController {
                 self?.dismiss(animated: true) { self?.model.open(url) }
             },
             sourcePage: { [weak self] url in self?.services.downloads.sourcePage(forFile: url) },
+            playAudio: { [weak self] urls in
+                guard let self else { return }
+                self.services.audio.play(urls)
+                self.showAudioPlayer()
+            },
+            addToPlaylist: { [weak self] urls in
+                guard let self else { return }
+                let picker = UIHostingController(rootView: AddToPlaylistView(
+                    urls: urls, playlists: self.services.playlists, files: self.services.files))
+                picker.modalPresentationStyle = .formSheet
+                self.topController.present(picker, animated: true)
+            },
+            trim: { [weak self] url in
+                guard let self else { return }
+                let trimmer = UIHostingController(rootView: VideoTrimView(url: url, files: self.services.files))
+                trimmer.modalPresentationStyle = .pageSheet
+                self.topController.present(trimmer, animated: true)
+            },
             close: { [weak self] in self?.dismiss(animated: true) })
     }
 
@@ -718,6 +785,18 @@ final class BrowserViewController: UIViewController {
             let viewer = ImageViewerController(
                 urls: urls, index: urls.firstIndex(of: item.url) ?? 0, files: services.files, preferences: services.preferences)
             topController.present(viewer, animated: true)
+        } else if item.isAudio && item.isPlayableMedia {
+            let songs = siblings.filter { $0.isAudio && $0.isPlayableMedia }.map(\.url)
+            let urls = songs.contains(item.url) ? songs : [item.url]
+            services.audio.play(urls, startAt: urls.firstIndex(of: item.url) ?? 0)
+            showAudioPlayer()
+        } else if item.isMovie && item.isPlayableMedia {
+            let videos = siblings.filter { $0.isMovie && $0.isPlayableMedia }.map(\.url)
+            let urls = videos.contains(item.url) ? videos : [item.url]
+            VideoPlayback(
+                urls: urls, index: urls.firstIndex(of: item.url) ?? 0, preferences: services.preferences,
+                positions: services.playbackPositions
+            ).present(from: topController)
         } else if item.contentType?.conforms(to: .pdf) == true {
             let viewer = UINavigationController(
                 rootViewController: PDFViewerController(url: item.url, preferences: services.preferences))

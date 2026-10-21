@@ -13,6 +13,10 @@ struct FileActions {
     var openPage: (URL) -> Void
     /// The page a downloaded file came from.
     var sourcePage: (URL) -> URL?
+    /// Plays songs (a folder's, or the selected ones) in the music player.
+    var playAudio: ([URL]) -> Void
+    var addToPlaylist: ([URL]) -> Void
+    var trim: (URL) -> Void
     var close: () -> Void
 }
 
@@ -325,6 +329,14 @@ struct FolderView: View {
         .draggable(item.url)
     }
 
+    /// The playable audio files directly inside a folder, in name order.
+    private func audioFiles(in folder: URL) -> [URL] {
+        files.contents(of: folder)
+            .filter { $0.isAudio && $0.isPlayableMedia }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            .map(\.url)
+    }
+
     private func location(of item: FileItem) -> String {
         files.displayPath(of: item.url.deletingLastPathComponent())
     }
@@ -348,6 +360,18 @@ struct FolderView: View {
         Button { compress([item.url]) } label: { Label("Compress", systemImage: "archivebox") }
         if let format = item.archiveFormat, ArchiveService.canExtract(format) {
             Button { extract(item, format: format) } label: { Label("Extract", systemImage: "archivebox.circle") }
+        }
+        if item.isDirectory {
+            let songs = audioFiles(in: item.url)
+            if !songs.isEmpty {
+                Button { actions.playAudio(songs) } label: { Label("Play All", systemImage: "play.fill") }
+            }
+        }
+        if item.isPlayableMedia {
+            Button { actions.addToPlaylist([item.url]) } label: { Label("Add to Playlist…", systemImage: "music.note.list") }
+        }
+        if item.isMovie && item.isPlayableMedia {
+            Button { actions.trim(item.url) } label: { Label("Trim…", systemImage: "timeline.selection") }
         }
         if item.isImage || item.isMovie {
             Button { actions.saveToPhotos([item.url]) } label: { Label("Save to Photos", systemImage: "photo.badge.arrow.down") }

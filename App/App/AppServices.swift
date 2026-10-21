@@ -14,6 +14,9 @@ final class AppServices {
     let searchEngines: SearchEngineStore
     let downloads: DownloadManager
     let files: FileStore
+    let audio = AudioPlayback()
+    let playlists: PlaylistStore
+    let playbackPositions = PlaybackPositions()
 
     init(
         preferences: Preferences = Preferences(),
@@ -25,7 +28,8 @@ final class AppServices {
         favicons: FaviconStore = FaviconStore(),
         searchEngines: SearchEngineStore? = nil,
         downloads: DownloadManager? = nil,
-        files: FileStore? = nil
+        files: FileStore? = nil,
+        playlists: PlaylistStore? = nil
     ) {
         self.preferences = preferences
         self.privateSession = privateSession
@@ -37,5 +41,6 @@ final class AppServices {
         self.searchEngines = searchEngines ?? SearchEngineStore(preferences: preferences)
         self.downloads = downloads ?? DownloadManager(preferences: preferences)
         self.files = files ?? FileStore(preferences: preferences)
+        self.playlists = playlists ?? PlaylistStore()
     }
 }

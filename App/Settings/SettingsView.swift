@@ -28,6 +28,7 @@ struct SettingsView: View {
                 downloadsSection
                 filesSection
                 viewersSection
+                mediaSection
                 aboutSection
             }
             .alert("Block Other Content Trackers?", isPresented: $confirmingContent) {
@@ -206,6 +207,16 @@ struct SettingsView: View {
             Text("Images and PDFs")
         } footer: {
             Text("With Instant, the next image or page simply appears when you tap the edge, swipe or press an arrow key.")
+        }
+    }
+
+    private var mediaSection: some View {
+        Section {
+            Toggle("Background Playback", isOn: binding(\.backgroundPlayback))
+        } header: {
+            Text("Video and Music")
+        } footer: {
+            Text("Videos keep playing as sound when you leave the app. Music always does. Picture in Picture keeps the picture too.")
         }
     }
 

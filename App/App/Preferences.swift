@@ -94,6 +94,7 @@ final class Preferences: ObservableObject {
             Key.downloadNotifications: true,
             Key.useTrash: true,
             Key.slideshowInterval: 3.0,
+            Key.backgroundPlayback: true,
         ])
         if defaults.object(forKey: Key.installDate) == nil {
             defaults.set(Date(), forKey: Key.installDate)
@@ -135,6 +136,7 @@ final class Preferences: ObservableObject {
         static let viewerTransition = "viewerTransition"
         static let slideshowInterval = "slideshowInterval"
         static let pdfPages = "pdfPages"
+        static let backgroundPlayback = "backgroundPlayback"
     }
 
     // MARK: Privacy
@@ -322,6 +324,12 @@ final class Preferences: ObservableObject {
         var pages = pdfPages
         pages[path] = page
         defaults.set(pages, forKey: Key.pdfPages)
+    }
+
+    /// Videos keep playing (as sound) when the app goes to the background.
+    var backgroundPlayback: Bool {
+        get { defaults.bool(forKey: Key.backgroundPlayback) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.backgroundPlayback) }
     }
 
     /// Deleted files go to the Trash for 30 days instead of being deleted right away.

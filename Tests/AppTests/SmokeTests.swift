@@ -182,6 +182,7 @@ enum TestServices {
                 preferences: preferences, file: temporaryStore("downloads.json"), directory: temporaryDirectory()),
             files: FileStore(
                 preferences: preferences, root: filesRoot,
-                trash: TrashStore(root: filesRoot, directory: temporaryDirectory(), file: temporaryStore("trash.json"))))
+                trash: TrashStore(root: filesRoot, directory: temporaryDirectory(), file: temporaryStore("trash.json"))),
+            playlists: PlaylistStore(root: filesRoot, file: temporaryStore("playlists.json")))
     }
 }

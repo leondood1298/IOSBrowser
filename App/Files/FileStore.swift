@@ -1,3 +1,4 @@
+import AVFoundation
 import BrowserCore
 import Combine
 import UIKit
@@ -37,6 +38,12 @@ nonisolated struct FileItem: Identifiable, Hashable, Sendable {
     }
 
     var isImage: Bool { contentType?.conforms(to: .image) ?? false }
+    var isAudio: Bool { contentType?.conforms(to: .audio) ?? false }
+    /// Video or audio the system player can play (MP4, MOV, M4V, MP3, AAC, WAV…).
+    var isPlayableMedia: Bool {
+        guard let identifier = contentType?.identifier else { return false }
+        return MediaTypes.playable.contains(identifier)
+    }
     var isMovie: Bool { contentType?.conforms(to: .movie) ?? false || contentType?.conforms(to: .video) ?? false }
     var archiveFormat: ArchiveFormat? { isDirectory ? nil : ArchiveFormat.byExtension(name) }
 
@@ -67,6 +74,11 @@ nonisolated struct FileItem: Identifiable, Hashable, Sendable {
             ? (try? FileManager.default.contentsOfDirectory(atPath: url.path).filter { !$0.hasPrefix(".") }.count)
             : nil
     }
+}
+
+/// The file types AVFoundation plays.
+nonisolated enum MediaTypes {
+    static let playable: Set<String> = Set(AVURLAsset.audiovisualTypes().map(\.rawValue))
 }
 
 /// A long-running file operation shown as a progress banner.

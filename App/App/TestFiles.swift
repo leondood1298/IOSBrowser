@@ -1,8 +1,8 @@
 #if DEBUG
 import UIKit
 
-/// Sample images and a PDF for the viewer UI tests (launch argument --seed-viewer-files): five
-/// numbered colour images and a five-page PDF in Documents/Viewer Test.
+/// Sample files for the viewer and player UI tests (launch argument --seed-viewer-files): five
+/// numbered colour images, a five-page PDF and a short tone in Documents/Viewer Test.
 enum TestFiles {
     static func writeViewerSamples() {
         let folder = AppFolders.documentsDirectory.appendingPathComponent("Viewer Test", isDirectory: true)
@@ -26,6 +26,32 @@ enum TestFiles {
             }
         }
         try? pdf.write(to: folder.appendingPathComponent("Sample.pdf"))
+        try? toneWAV(seconds: 4).write(to: folder.appendingPathComponent("Tone.wav"))
+    }
+
+    /// A mono 16-bit 440 Hz tone.
+    private static func toneWAV(seconds: Int, rate: Int = 22050) -> Data {
+        var samples = Data(capacity: seconds * rate * 2)
+        for index in 0..<(seconds * rate) {
+            let value = Int16(8000 * sin(2 * Double.pi * 440 * Double(index) / Double(rate)))
+            withUnsafeBytes(of: value.littleEndian) { samples.append(contentsOf: $0) }
+        }
+        var header = Data()
+        func append(_ value: UInt32) { withUnsafeBytes(of: value.littleEndian) { header.append(contentsOf: $0) } }
+        func append16(_ value: UInt16) { withUnsafeBytes(of: value.littleEndian) { header.append(contentsOf: $0) } }
+        header.append(contentsOf: Array("RIFF".utf8))
+        append(UInt32(36 + samples.count))
+        header.append(contentsOf: Array("WAVEfmt ".utf8))
+        append(16)
+        append16(1)
+        append16(1)
+        append(UInt32(rate))
+        append(UInt32(rate * 2))
+        append16(2)
+        append16(16)
+        header.append(contentsOf: Array("data".utf8))
+        append(UInt32(samples.count))
+        return header + samples
     }
 
     private static func draw(_ text: String, in rect: CGRect, size: CGFloat, color: UIColor) {

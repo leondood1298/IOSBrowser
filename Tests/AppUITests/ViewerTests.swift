@@ -31,6 +31,23 @@ final class ViewerTests: UITestCase {
     }
 
     @MainActor
+    func testMusicPlayer() throws {
+        launch(extraArguments: ["--seed-viewer-files"])
+        openFilesFolder("Viewer Test")
+        let tone = element("file-Tone.wav")
+        XCTAssertTrue(tone.waitForExistence(timeout: 15))
+        tone.tap()
+        let title = app.staticTexts["audioTitle"]
+        XCTAssertTrue(title.waitForExistence(timeout: 15))
+        XCTAssertEqual(title.label, "Tone")
+        saveScreenshot("42-music-player")
+        app.buttons["audioDoneButton"].tap()
+        app.buttons["filesDoneButton"].tap()
+        XCTAssertTrue(element("miniPlayer").waitForExistence(timeout: 10))
+        saveScreenshot("43-mini-player")
+    }
+
+    @MainActor
     func testPDFPagesTurnInstantly() throws {
         launch(extraArguments: ["--seed-viewer-files"])
         openFilesFolder("Viewer Test")
