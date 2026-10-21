@@ -56,26 +56,11 @@ targets:
       # The share sheet's "Browser" (Open in Browser, Download with Browser).
       - target: ShareExtension
       # VLC for the formats the system player can't open; scripts/fetch_vlckit.sh puts it in Vendor/.
-      # A static framework, so the system frameworks and libraries it uses are linked here.
+      # A dynamic framework: it has to be embedded, or the app can't launch on a device.
       - framework: Vendor/MobileVLCKit.xcframework
-        embed: false
-      - sdk: QuartzCore.framework
-      - sdk: CoreText.framework
-      - sdk: Security.framework
-      - sdk: CFNetwork.framework
-      - sdk: AudioToolbox.framework
-      - sdk: OpenGLES.framework
-      - sdk: CoreGraphics.framework
-      - sdk: VideoToolbox.framework
-      - sdk: CoreMedia.framework
-      - sdk: libc++.tbd
-      - sdk: libxml2.tbd
-      - sdk: libz.tbd
-      - sdk: libbz2.tbd
-      - sdk: libiconv.tbd
+        embed: true
     settings:
       base:
-        OTHER_LDFLAGS: "$(inherited) -ObjC"
         PRODUCT_NAME: Browser
         PRODUCT_BUNDLE_IDENTIFIER: io.github.leondood1298.browser
         TARGETED_DEVICE_FAMILY: "2"
