@@ -12,6 +12,12 @@ app="$archive/Products/Applications/Browser.app"
 rm -rf "$out/Payload"
 mkdir -p "$out/Payload"
 cp -R "$app" "$out/Payload/"
+# The share extension goes in its own copy of the IPA, in case the signing service can't sign
+# app extensions; the main IPA leaves it out.
+if [ -d "$out/Payload/Browser.app/PlugIns" ]; then
+    (cd "$out" && rm -f "$name-with-share-extension.ipa" && zip -qry "$name-with-share-extension.ipa" Payload)
+    rm -rf "$out/Payload/Browser.app/PlugIns"
+fi
 (cd "$out" && rm -f "$name.ipa" && zip -qry "$name.ipa" Payload)
 
 echo "Architectures: $(lipo -archs "$out/Payload/Browser.app/Browser")"

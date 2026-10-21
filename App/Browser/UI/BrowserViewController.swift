@@ -121,11 +121,33 @@ final class BrowserViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        if showOnboardingIfNeeded() {
+            return
+        }
+        focusAfterAppearing()
+    }
+
+    private func focusAfterAppearing() {
         if model.selectedTab?.showsStartPage == true {
             addressField.beginEditingAddress()
         } else {
             takeFocusIfIdle()
         }
+    }
+
+    /// The tour on first launch (not in UI tests). Returns whether it's showing.
+    private func showOnboardingIfNeeded() -> Bool {
+        guard !services.preferences.hasSeenOnboarding, presentedViewController == nil,
+              !ProcessInfo.processInfo.arguments.contains("--ui-testing")
+        else { return false }
+        let host = UIHostingController(rootView: OnboardingView { [weak self] in
+            self?.services.preferences.hasSeenOnboarding = true
+            self?.dismiss(animated: true) { self?.focusAfterAppearing() }
+        })
+        host.modalPresentationStyle = .formSheet
+        host.preferredContentSize = CGSize(width: 540, height: 620)
+        present(host, animated: true)
+        return true
     }
 
     // Keyboard shortcuts and arrow-key scrolling start at the first responder, so, as in Safari,
@@ -1071,19 +1093,20 @@ final class BrowserViewController: UIViewController {
     }
 
     /// Opens URLs handed to the app (iosbrowser:// links) in a new tab.
+    /// The browser's own links (iosbrowser://…), from the share extension or other apps.
     func handleIncomingURL(_ url: URL) {
-        guard url.scheme?.lowercased() == "iosbrowser" else { return }
-        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        let wantsPrivate = items.first { $0.name == "private" }?.value == "1"
-        let input: String?
-        switch url.host?.lowercased() {
-        case "open-url": input = items.first { $0.name == "url" }?.value
-        case "open-text": input = items.first { $0.name == "text" }?.value
-        default: input = nil
+        guard let link = AppLink(url: url) else { return }
+        switch link {
+        case .open(let address, let isPrivate):
+            guard let target = BrowserWindowModel.url(for: address.absoluteString, engine: services.searchEngines.defaultEngine)
+            else { return }
+            model.newTab(url: target, isPrivate: isPrivate)
+        case .openText(let text, let isPrivate):
+            guard let target = BrowserWindowModel.url(for: text, engine: services.searchEngines.defaultEngine) else { return }
+            model.newTab(url: target, isPrivate: isPrivate)
+        case .download(let address):
+            services.downloads.download(address, isPrivate: false, presenter: self)
         }
-        guard let input, let target = BrowserWindowModel.url(for: input, engine: services.searchEngines.defaultEngine)
-        else { return }
-        model.newTab(url: target, isPrivate: wantsPrivate)
     }
 }
 

@@ -133,6 +133,7 @@ final class Preferences: ObservableObject {
         static let backgroundDownloads = "backgroundDownloads"
         static let downloadParts = "downloadParts"
         static let simultaneousDownloads = "simultaneousDownloads"
+        static let hasSeenOnboarding = "hasSeenOnboarding"
         static let downloadNotifications = "downloadNotifications"
         static let useTrash = "useTrash"
         static let viewerTransition = "viewerTransition"
@@ -344,6 +345,12 @@ final class Preferences: ObservableObject {
     var downloadParts: Int {
         get { min(max(defaults.integer(forKey: Key.downloadParts), 1), 8) }
         set { objectWillChange.send(); defaults.set(newValue, forKey: Key.downloadParts) }
+    }
+
+    /// Whether the first-launch tour has been shown.
+    var hasSeenOnboarding: Bool {
+        get { defaults.bool(forKey: Key.hasSeenOnboarding) }
+        set { defaults.set(newValue, forKey: Key.hasSeenOnboarding) }
     }
 
     /// How many downloads the browser runs at once; the rest wait their turn.

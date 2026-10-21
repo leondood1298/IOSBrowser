@@ -21,9 +21,10 @@ runs:
         command -v xcodegen > /dev/null || brew install xcodegen
         command -v xcbeautify > /dev/null || brew install xcbeautify
         xcodegen --version
-    - name: Cache MobileVLCKit
+    # Saved right after the download, so a later failing step doesn't lose it.
+    - name: Restore MobileVLCKit
       id: vlckit
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: Vendor/MobileVLCKit.xcframework
         key: mobilevlckit-3.7.3-${{ hashFiles('scripts/fetch_vlckit.sh') }}
@@ -31,6 +32,12 @@ runs:
       if: steps.vlckit.outputs.cache-hit != 'true'
       shell: bash
       run: bash scripts/fetch_vlckit.sh
+    - name: Save MobileVLCKit
+      if: steps.vlckit.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: Vendor/MobileVLCKit.xcframework
+        key: ${{ steps.vlckit.outputs.cache-primary-key }}
     - name: Generate project
       shell: bash
       run: xcodegen generate

@@ -53,6 +53,8 @@ targets:
       - package: ZIPFoundation
       - package: SWCompression
       - package: Unrar
+      # The share sheet's "Browser" (Open in Browser, Download with Browser).
+      - target: ShareExtension
       # VLC for the formats the system player can't open; scripts/fetch_vlckit.sh puts it in Vendor/.
       # A static framework, so the system frameworks and libraries it uses are linked here.
       - framework: Vendor/MobileVLCKit.xcframework
@@ -87,6 +89,30 @@ targets:
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        SWIFT_APPROACHABLE_CONCURRENCY: "YES"
+        SWIFT_STRICT_CONCURRENCY: minimal
+
+  ShareExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Extensions/Share
+        excludes:
+          - "Info.plist"
+    dependencies:
+      - package: BrowserCore
+    settings:
+      base:
+        PRODUCT_NAME: ShareExtension
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.leondood1298.browser.share
+        TARGETED_DEVICE_FAMILY: "2"
+        INFOPLIST_FILE: Extensions/Share/Info.plist
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_CFBundleDisplayName: Browser
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        APPLICATION_EXTENSION_API_ONLY: "YES"
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
         SWIFT_APPROACHABLE_CONCURRENCY: "YES"
         SWIFT_STRICT_CONCURRENCY: minimal
