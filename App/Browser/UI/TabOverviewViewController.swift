@@ -4,6 +4,8 @@ import UIKit
 /// A grid of the window's tabs with snapshots. Switch between normal and private tabs,
 /// open a tab, close tabs or start a new one.
 final class TabOverviewViewController: UIViewController {
+    /// Called once the overview has gone away.
+    var onDismiss: (() -> Void)?
     private let model: BrowserWindowModel
     private var showingPrivate: Bool
     private var observers: Set<AnyCancellable> = []
@@ -111,6 +113,11 @@ final class TabOverviewViewController: UIViewController {
         if showingPrivate {
             dismissOverview()
         }
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        onDismiss?()
     }
 
     private func dismissOverview() {

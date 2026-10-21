@@ -205,6 +205,7 @@ extension TabModel: WKUIDelegate {
         _ webView: WKWebView,
         contextMenuConfigurationFor elementInfo: WKContextMenuElementInfo
     ) async -> UIContextMenuConfiguration? {
+        lastContextMenuDate = Date()
         guard let handler = delegate else { return nil }
         var info: [String: Any]?
         do {

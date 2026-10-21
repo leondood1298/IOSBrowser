@@ -19,7 +19,7 @@ final class PrivacyFlowTests: UITestCase {
     @MainActor
     func testEraseClearsPrivateTabs() throws {
         launch()
-        app.typeKey("n", modifierFlags: [.command, .shift])
+        openPrivateTab()
         open("localhost:8000", tapField: false)
         waitForText("Browser test page")
         let erase = app.buttons["eraseButton"]

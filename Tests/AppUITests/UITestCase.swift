@@ -56,6 +56,14 @@ class UITestCase: XCTestCase {
         XCTAssertTrue(app.webViews.staticTexts[text].waitForExistence(timeout: timeout), "\(text) didn't appear")
     }
 
+    /// Opens a private tab from the New Tab button's menu. (Typing ⇧⌘N isn't reliable in UI
+    /// tests: with the on-screen keyboard up, the simulator types the letter into the field.)
+    @MainActor
+    func openPrivateTab() {
+        app.buttons["newTabButton"].press(forDuration: 1.2)
+        tapMenuItem("New Private Tab")
+    }
+
     /// The element with an accessibility identifier, whatever its type (SwiftUI decides whether a
     /// view shows up as an "other" element, a scroll view, a cell…).
     @MainActor

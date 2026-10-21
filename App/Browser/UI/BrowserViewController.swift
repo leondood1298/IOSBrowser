@@ -110,6 +110,20 @@ final class BrowserViewController: UIViewController {
         super.viewDidAppear(animated)
         if model.selectedTab?.showsStartPage == true {
             addressField.beginEditingAddress()
+        } else {
+            takeFocusIfIdle()
+        }
+    }
+
+    // Keyboard shortcuts start at the first responder; with none they reach nobody. So the
+    // browser takes the focus whenever nothing else in the window has it.
+    override var canBecomeFirstResponder: Bool { true }
+
+    func takeFocusIfIdle() {
+        guard view.window != nil, presentedViewController == nil else { return }
+        let current = UIResponder.current
+        if current == nil || current is UIWindow {
+            becomeFirstResponder()
         }
     }
 
@@ -189,7 +203,11 @@ final class BrowserViewController: UIViewController {
         addressField.completionProvider = { [weak self] typed in
             self?.domainCompletion().completion(for: typed)
         }
-        addressField.onEditingEnded = { [weak self] in self?.hideSuggestions() }
+        addressField.onEditingEnded = { [weak self] in
+            self?.hideSuggestions()
+            // After the next run loop: tapping into the page hands the focus over first.
+            DispatchQueue.main.async { self?.takeFocusIfIdle() }
+        }
         tabStrip.onSelect = { [weak self] tab in self?.model.select(tab) }
         tabStrip.onClose = { [weak self] tab in self?.model.close(tab) }
         tabStrip.onMove = { [weak self] from, to in self?.model.moveTab(from: from, to: to) }
@@ -558,7 +576,9 @@ final class BrowserViewController: UIViewController {
         guard presentedViewController == nil else { return }
         let presentOverview = { [weak self] in
             guard let self, self.presentedViewController == nil else { return }
-            self.present(TabOverviewViewController(model: self.model), animated: true)
+            let overview = TabOverviewViewController(model: self.model)
+            overview.onDismiss = { [weak self] in self?.takeFocusIfIdle() }
+            self.present(overview, animated: true)
         }
         if let tab = model.selectedTab {
             tab.captureSnapshot(completion: presentOverview)
@@ -792,6 +812,27 @@ extension BrowserViewController: TabModelDelegate {
     func addBookmark(title: String, url: URL) {
         services.bookmarks.addBookmark(title: title, url: url)
         Toast.show("Bookmark added", systemImage: "book.fill", in: view)
+    }
+
+    func showImageMenu(_ url: URL, at point: CGPoint, in sourceView: UIView, from tab: TabModel) {
+        guard presentedViewController == nil else { return }
+        let sheet = UIAlertController(title: nil, message: url.lastPathComponent, preferredStyle: .actionSheet)
+        let actions: [(String, () -> Void)] = [
+            ("Open Image in New Tab", { [weak self] in self?.openInNewTab(url, from: tab, background: false, isPrivate: tab.isPrivate) }),
+            ("Save to Photos", { [weak self] in self?.imageAction(.saveToPhotos, url: url, from: tab) }),
+            ("Save to Downloads", { [weak self] in self?.imageAction(.download, url: url, from: tab) }),
+            ("Copy Image", { [weak self] in self?.imageAction(.copy, url: url, from: tab) }),
+            ("Share Image…", { [weak self] in self?.imageAction(.share, url: url, from: tab) }),
+        ]
+        for (title, action) in actions {
+            sheet.addAction(UIAlertAction(title: title, style: .default) { _ in action() })
+        }
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = sourceView
+            popover.sourceRect = CGRect(origin: point, size: CGSize(width: 1, height: 1))
+        }
+        present(sheet, animated: true)
     }
 
     func downloadLink(_ url: URL, from tab: TabModel) {
