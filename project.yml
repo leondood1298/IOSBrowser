@@ -1,0 +1,104 @@
+name: Browser
+
+options:
+  bundleIdPrefix: io.github.leondood1298
+  deploymentTarget:
+    iOS: "26.0"
+  minimumXcodeGenVersion: 2.42.0
+  createIntermediateGroups: true
+  groupSortPosition: top
+  developmentLanguage: en
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "2"
+    # No signing in CI: simulator builds are signed ad hoc ("Sign to Run Locally"),
+    # device builds stay unsigned and Signulous signs the IPA.
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+    "CODE_SIGN_IDENTITY[sdk=iphoneos*]": ""
+    "CODE_SIGNING_REQUIRED[sdk=iphoneos*]": "NO"
+    "CODE_SIGNING_ALLOWED[sdk=iphoneos*]": "NO"
+    COMPILER_INDEX_STORE_ENABLE: "NO"
+    ENABLE_PREVIEWS: "NO"
+
+packages:
+  BrowserCore:
+    path: Packages/BrowserCore
+
+targets:
+  Browser:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes:
+          - "Info.plist"
+    dependencies:
+      - package: BrowserCore
+    settings:
+      base:
+        PRODUCT_NAME: Browser
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.leondood1298.browser
+        TARGETED_DEVICE_FAMILY: "2"
+        INFOPLIST_FILE: App/Info.plist
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_CFBundleDisplayName: Browser
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: "YES"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        SWIFT_APPROACHABLE_CONCURRENCY: "YES"
+        SWIFT_STRICT_CONCURRENCY: minimal
+
+  BrowserTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests/AppTests
+    dependencies:
+      - target: Browser
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.leondood1298.browser.tests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Browser.app/Browser"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        SWIFT_STRICT_CONCURRENCY: minimal
+
+  BrowserUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: Tests/AppUITests
+    dependencies:
+      - target: Browser
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.leondood1298.browser.uitests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_TARGET_NAME: Browser
+        SWIFT_STRICT_CONCURRENCY: minimal
+
+schemes:
+  Browser:
+    build:
+      targets:
+        Browser: all
+        BrowserTests: [test]
+        BrowserUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - BrowserTests
+        - BrowserUITests
+    archive:
+      config: Release

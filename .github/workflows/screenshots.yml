@@ -1,0 +1,72 @@
+name: Screenshots
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: screenshots-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  screenshots:
+    name: UI flows on iPad simulator
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup
+
+      - name: Start test server
+        run: |
+          python3 scripts/testserver.py --root TestSite --port 8000 > server.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:8000/ > /dev/null && break
+            sleep 1
+          done
+          curl -sfI http://localhost:8000/
+
+      - name: Pick simulator
+        run: echo "SIM_ID=$(bash scripts/pick_simulator.sh)" >> "$GITHUB_ENV"
+
+      - name: UI tests
+        run: |
+          mkdir -p shots
+          TEST_RUNNER_SHOTS_DIR="$PWD/shots" xcodebuild test -project Browser.xcodeproj -scheme Browser \
+            -destination "id=$SIM_ID" -derivedDataPath build/DD -only-testing:BrowserUITests \
+            -resultBundlePath build/UITests.xcresult \
+            2>&1 | tee uitest.log | xcbeautify --renderer github-actions
+
+      - name: Export attachments
+        if: always()
+        run: |
+          if [ -z "$(ls -A shots 2> /dev/null)" ] && [ -d build/UITests.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/UITests.xcresult --output-path shots || true
+          fi
+          ls -la shots || true
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots
+          path: shots/
+          retention-days: 14
+
+      - name: Error summary
+        if: failure()
+        run: bash scripts/error_summary.sh uitest.log
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshot-logs
+          path: |
+            *.log
+            build/*.xcresult
+          retention-days: 7

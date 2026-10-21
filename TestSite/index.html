@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Browser test page</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; margin: 40px; line-height: 1.5; }
+    a { display: block; margin: 10px 0; font-size: 18px; }
+  </style>
+</head>
+<body>
+  <h1>Browser test page</h1>
+  <p>Fixtures served by scripts/testserver.py for the UI tests.</p>
+  <a id="second-page" href="/second.html">Second page</a>
+  <a id="download-text" href="/files/sample.txt?download=1">Download sample.txt</a>
+  <a id="download-big" href="/generated/20MB.bin">Download a 20 MB file</a>
+  <a id="download-slow" href="/generated/8MB.bin?rate=256">Download an 8 MB file slowly</a>
+  <a id="new-window" href="/second.html" target="_blank">Open second page in a new window</a>
+</body>
+</html>

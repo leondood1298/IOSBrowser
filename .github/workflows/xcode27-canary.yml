@@ -1,0 +1,47 @@
+name: Xcode 27 canary
+
+# Non-blocking: shows whether the project already builds with Xcode 27 so the main
+# pipeline can move to it once it's stable.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: xcode27-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build with Xcode 27
+    runs-on: xcode-27
+    continue-on-error: true
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Find Xcode 27
+        id: xcode
+        run: |
+          xcode=$(ls -d /Applications/Xcode_27*.app 2> /dev/null | grep -vi beta | sort -V | tail -1 || true)
+          [ -n "$xcode" ] || xcode=$(ls -d /Applications/Xcode_27*.app | sort -V | tail -1)
+          echo "path=$xcode" >> "$GITHUB_OUTPUT"
+          echo "Using $xcode"
+
+      - uses: ./.github/actions/setup
+        with:
+          xcode: ${{ steps.xcode.outputs.path }}
+
+      - name: Build
+        run: |
+          xcodebuild build -project Browser.xcodeproj -scheme Browser \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build/DD \
+            2>&1 | tee build.log | xcbeautify --renderer github-actions
+
+      - name: Error summary
+        if: failure()
+        run: bash scripts/error_summary.sh build.log

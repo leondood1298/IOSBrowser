@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup
+
+      - name: BrowserCore tests
+        run: swift test --package-path Packages/BrowserCore 2>&1 | tee core.log
+
+      - name: Pick simulator
+        run: echo "SIM_ID=$(bash scripts/pick_simulator.sh)" >> "$GITHUB_ENV"
+
+      - name: Build for testing
+        run: |
+          xcodebuild build-for-testing -project Browser.xcodeproj -scheme Browser \
+            -destination "id=$SIM_ID" -derivedDataPath build/DD \
+            2>&1 | tee build.log | xcbeautify --renderer github-actions
+
+      - name: Unit tests
+        run: |
+          xcodebuild test-without-building -project Browser.xcodeproj -scheme Browser \
+            -destination "id=$SIM_ID" -derivedDataPath build/DD -only-testing:BrowserTests \
+            -resultBundlePath build/UnitTests.xcresult \
+            2>&1 | tee test.log | xcbeautify --renderer github-actions
+
+      - name: Error summary
+        if: failure()
+        run: bash scripts/error_summary.sh core.log build.log test.log
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-logs
+          path: |
+            *.log
+            build/*.xcresult
+          retention-days: 7
