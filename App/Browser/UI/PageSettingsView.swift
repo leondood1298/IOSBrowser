@@ -20,7 +20,7 @@ final class PageSettingsModel: ObservableObject {
         preferences = services.preferences
         let settings = services.siteSettings.settings(for: tab.url)
         zoom = settings.zoom ?? services.preferences.defaultZoom
-        layout = settings.layout ?? .desktop
+        layout = settings.layout ?? services.preferences.defaultLayout
         userAgent = settings.userAgent
     }
 

@@ -8,6 +8,8 @@ final class TabStripView: UIView {
     var onClose: ((TabModel) -> Void)?
     var onMove: ((Int, Int) -> Void)?
     var onToggleMute: ((TabModel) -> Void)?
+    /// The long-press menu for a tab.
+    var menuProvider: ((TabModel) -> UIMenu?)?
     var favicons: FaviconStore?
 
     private var tabs: [TabModel] = []
@@ -120,6 +122,16 @@ extension TabStripView: UICollectionViewDataSource, UICollectionViewDelegateFlow
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         onSelect?(tabs[indexPath.item])
     }
+
+    func collectionView(
+        _ collectionView: UICollectionView, contextMenuConfigurationForItemsAt indexPaths: [IndexPath], point: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        guard indexPaths.count == 1, let index = indexPaths.first?.item, tabs.indices.contains(index) else { return nil }
+        let tab = tabs[index]
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+            self?.menuProvider?(tab)
+        }
+    }
 }
 
 extension TabStripView: UICollectionViewDragDelegate, UICollectionViewDropDelegate {
@@ -127,7 +139,14 @@ extension TabStripView: UICollectionViewDragDelegate, UICollectionViewDropDelega
         _ collectionView: UICollectionView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath
     ) -> [UIDragItem] {
         let tab = tabs[indexPath.item]
-        let provider = tab.url.map { NSItemProvider(object: $0 as NSURL) } ?? NSItemProvider()
+        let provider = NSItemProvider()
+        if let url = tab.url {
+            provider.registerObject(url as NSURL, visibility: .all)
+            // Dropping the tab outside the window opens it in a new window.
+            let activity = NSUserActivity(activityType: SceneDelegate.openURLActivityType)
+            activity.userInfo = ["url": url.absoluteString, "private": tab.isPrivate]
+            provider.registerObject(activity, visibility: .all)
+        }
         let item = UIDragItem(itemProvider: provider)
         item.localObject = tab
         return [item]

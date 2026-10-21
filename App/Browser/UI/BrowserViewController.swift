@@ -20,6 +20,7 @@ final class BrowserViewController: UIViewController {
     private weak var displayedWebView: WKWebView?
     private var modelObservers: Set<AnyCancellable> = []
     private var tabObservers: Set<AnyCancellable> = []
+    private var tabStripHeight: NSLayoutConstraint?
 
     private lazy var backButton = barButton("chevron.backward", label: "Back", id: "backButton") { [weak self] in
         self?.model.selectedTab?.goBack()
@@ -81,15 +82,18 @@ final class BrowserViewController: UIViewController {
         view.backgroundColor = .systemBackground
         model.tabDelegate = self
         tabStrip.favicons = services.favicons
-        configureNavigationItem()
         configureLayout()
         configureCallbacks()
+        applyWidthLayout()
+        registerForTraitChanges([UITraitHorizontalSizeClass.self]) { (controller: BrowserViewController, _: UITraitCollection) in
+            controller.applyWidthLayout()
+        }
 
         model.$selectedTab
             .receive(on: RunLoop.main)
             .sink { [weak self] tab in self?.show(tab) }
             .store(in: &modelObservers)
-        model.normalGroup.$tabs.combineLatest(model.privateGroup.$tabs, model.$isPrivate)
+        model.$normalTabs.combineLatest(model.$privateTabs, model.$isPrivate)
             .receive(on: RunLoop.main)
             .sink { [weak self] _, _, _ in self?.refreshTabStrip() }
             .store(in: &modelObservers)
@@ -108,12 +112,33 @@ final class BrowserViewController: UIViewController {
 
     // MARK: - Setup
 
-    private func configureNavigationItem() {
+    /// Wide windows keep every button in the top bar with the tab strip below it. Narrow windows
+    /// (Slide Over, small Stage Manager windows) move the buttons to a bottom toolbar and hide the strip.
+    private func applyWidthLayout() {
         navigationItem.style = .browser
         navigationItem.titleView = addressField
         navigationItem.leftItemsSupplementBackButton = true
-        navigationItem.leftBarButtonItems = [backButton, forwardButton]
-        navigationItem.rightBarButtonItems = [moreButton, tabsButton, newTabButton, shareButton]
+        let compact = traitCollection.horizontalSizeClass == .compact
+        if compact {
+            navigationItem.leftBarButtonItems = []
+            navigationItem.rightBarButtonItems = [moreButton]
+            toolbarItems = [
+                backButton, .flexibleSpace(), forwardButton, .flexibleSpace(), shareButton, .flexibleSpace(),
+                newTabButton, .flexibleSpace(), tabsButton,
+            ]
+        } else {
+            toolbarItems = []
+            navigationItem.leftBarButtonItems = [backButton, forwardButton]
+            navigationItem.rightBarButtonItems = [moreButton, tabsButton, newTabButton, shareButton]
+        }
+        navigationController?.setToolbarHidden(!compact, animated: false)
+        tabStripHeight?.constant = compact ? 0 : 38
+        tabStrip.isHidden = compact
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        applyWidthLayout()
     }
 
     private func configureLayout() {
@@ -122,11 +147,13 @@ final class BrowserViewController: UIViewController {
             view.addSubview(subview)
         }
         progressView.isHidden = true
+        let height = tabStrip.heightAnchor.constraint(equalToConstant: 38)
+        tabStripHeight = height
         NSLayoutConstraint.activate([
+            height,
             tabStrip.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tabStrip.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tabStrip.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tabStrip.heightAnchor.constraint(equalToConstant: 38),
             progressView.topAnchor.constraint(equalTo: tabStrip.bottomAnchor),
             progressView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             progressView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -155,6 +182,7 @@ final class BrowserViewController: UIViewController {
         tabStrip.onClose = { [weak self] tab in self?.model.close(tab) }
         tabStrip.onMove = { [weak self] from, to in self?.model.moveTab(from: from, to: to) }
         tabStrip.onToggleMute = { tab in tab.setMuted(!tab.isMuted) }
+        tabStrip.menuProvider = { [weak self] tab in self?.menu(for: tab) }
     }
 
     private func barButton(_ symbol: String, label: String, id: String, action: @escaping () -> Void) -> UIBarButtonItem {
@@ -325,6 +353,63 @@ final class BrowserViewController: UIViewController {
 
     // MARK: - Menus
 
+    /// The long-press menu for a tab in the strip.
+    private func menu(for tab: TabModel) -> UIMenu {
+        var actions: [UIMenuElement] = []
+        if !tab.isPrivate {
+            let store = services.tabStore
+            var targets = ([model.defaultGroup] + store.namedGroups).filter { $0 !== model.normalGroup }
+            targets = targets.filter { store.window(showing: $0) == nil || $0.title != nil }
+            var moveItems: [UIMenuElement] = targets.map { group in
+                UIAction(title: group.title ?? "This Window's Tabs",
+                         image: UIImage(systemName: group.title == nil ? "square.on.square" : "folder")) { [weak self] _ in
+                    self?.model.move(tab, to: group)
+                }
+            }
+            moveItems.append(UIAction(title: "New Tab Group…", image: UIImage(systemName: "folder.badge.plus")) {
+                [weak self] _ in self?.moveToNewGroup(tab)
+            })
+            actions.append(UIMenu(title: "Move to Tab Group", image: UIImage(systemName: "folder"), children: moveItems))
+        }
+        actions.append(UIAction(title: "Duplicate Tab", image: UIImage(systemName: "plus.square.on.square")) { [weak self] _ in
+            self?.model.duplicate(tab)
+        })
+        if let url = tab.url {
+            actions.append(UIAction(title: "Copy Link", image: UIImage(systemName: "doc.on.doc")) { _ in
+                UIPasteboard.general.url = url
+            })
+        }
+        actions.append(UIAction(title: tab.isMuted ? "Unmute Tab" : "Mute Tab",
+                                image: UIImage(systemName: tab.isMuted ? "speaker.wave.2" : "speaker.slash")) { _ in
+            tab.setMuted(!tab.isMuted)
+        })
+        let closing = UIMenu(options: .displayInline, children: [
+            UIAction(title: "Close Other Tabs", image: UIImage(systemName: "xmark.square")) { [weak self] _ in
+                self?.model.closeOtherTabs(than: tab)
+            },
+            UIAction(title: "Close Tab", image: UIImage(systemName: "xmark"), attributes: .destructive) { [weak self] _ in
+                self?.model.close(tab)
+            },
+        ])
+        return UIMenu(children: actions + [closing])
+    }
+
+    private func moveToNewGroup(_ tab: TabModel) {
+        let alert = UIAlertController(title: "New Tab Group", message: nil, preferredStyle: .alert)
+        alert.addTextField { field in
+            field.placeholder = "Name"
+            field.autocapitalizationType = .words
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Create", style: .default) { [weak self] _ in
+            guard let self else { return }
+            let name = alert.textFields?.first?.text ?? ""
+            let group = self.services.tabStore.makeGroup(title: name.isEmpty ? "Tab Group" : name)
+            self.model.move(tab, to: group)
+        })
+        present(alert, animated: true)
+    }
+
     private func recentlyClosedMenu() -> [UIMenuElement] {
         let closed = model.recentlyClosed.prefix(10)
         guard !closed.isEmpty else { return [] }
@@ -385,8 +470,8 @@ final class BrowserViewController: UIViewController {
                 self?.showLibrary(.history)
             },
         ]))
-        sections.append(UIAction(title: "Diagnostics", image: UIImage(systemName: "stethoscope")) { [weak self] _ in
-            self?.showDiagnostics()
+        sections.append(UIAction(title: "Settings", image: UIImage(systemName: "gear")) { [weak self] _ in
+            self?.showSettings()
         })
         return sections
     }
@@ -496,8 +581,11 @@ final class BrowserViewController: UIViewController {
         Toast.show(ZoomLevels.percentText(next), systemImage: "plus.magnifyingglass", in: view)
     }
 
-    private func showDiagnostics() {
-        let host = UIHostingController(rootView: NavigationStack { DiagnosticsView() })
+    func showSettings() {
+        guard presentedViewController == nil else { return }
+        let host = UIHostingController(rootView: SettingsView(preferences: services.preferences) { [weak self] in
+            self?.dismiss(animated: true)
+        })
         host.modalPresentationStyle = .formSheet
         present(host, animated: true)
     }
@@ -621,6 +709,15 @@ extension BrowserViewController {
     @objc func zoomInCommand(_ sender: Any?) { adjustZoom(1) }
     @objc func zoomOutCommand(_ sender: Any?) { adjustZoom(-1) }
     @objc func actualSizeCommand(_ sender: Any?) { adjustZoom(0) }
+    @objc func showSettingsCommand(_ sender: Any?) { showSettings() }
+
+    /// ⌘1–⌘8 pick that tab, ⌘9 the last one (like Safari).
+    @objc func selectTabCommand(_ sender: UICommand) {
+        guard let number = sender.propertyList as? Int else { return }
+        let tabs = model.activeGroup.tabs
+        guard !tabs.isEmpty else { return }
+        model.select(number == 9 ? tabs[tabs.count - 1] : tabs[min(number - 1, tabs.count - 1)])
+    }
 
     override func validate(_ command: UICommand) {
         super.validate(command)

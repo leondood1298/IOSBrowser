@@ -7,8 +7,17 @@ import WebKit
 /// plus which one is showing and which tab is selected.
 final class BrowserWindowModel: ObservableObject {
     let services: AppServices
-    let normalGroup: TabGroup
+    /// The window's own untitled group, kept while the window shows a named group.
+    let defaultGroup: TabGroup
+    /// The group of normal tabs the window shows: its default group or a named tab group.
+    @Published private(set) var normalGroup: TabGroup
     let privateGroup: TabGroup
+    /// The tabs of the shown groups, republished so views follow group switches.
+    @Published private(set) var normalTabs: [TabModel] = []
+    @Published private(set) var privateTabs: [TabModel] = []
+    /// Lets another window bring this one to the front.
+    weak var sceneSession: UISceneSession?
+    private var groupObservers: Set<AnyCancellable> = []
 
     @Published private(set) var isPrivate = false
     @Published private(set) var selectedTab: TabModel?
@@ -27,14 +36,25 @@ final class BrowserWindowModel: ObservableObject {
         didSet { allTabs.forEach { $0.delegate = tabDelegate } }
     }
 
-    init(services: AppServices = .shared, restoringGroupID: UUID?) {
+    init(services: AppServices = .shared, restoringGroupID: UUID?, activeGroupID: UUID? = nil) {
         self.services = services
-        if let id = restoringGroupID, let group = services.tabStore.group(withID: id) {
+        let store = services.tabStore
+        let ownGroup: TabGroup
+        if let id = restoringGroupID, let group = store.group(withID: id) {
+            ownGroup = group
+        } else {
+            ownGroup = store.makeGroup()
+        }
+        defaultGroup = ownGroup
+        if let id = activeGroupID, let group = store.group(withID: id), group.title != nil,
+           store.window(showing: group) == nil {
             normalGroup = group
         } else {
-            normalGroup = services.tabStore.makeGroup()
+            normalGroup = ownGroup
         }
         privateGroup = TabGroup(isPrivate: true)
+        store.register(self)
+        observeGroups()
         for tab in normalGroup.tabs {
             adopt(tab)
         }
@@ -47,6 +67,115 @@ final class BrowserWindowModel: ObservableObject {
 
     var activeGroup: TabGroup {
         isPrivate ? privateGroup : normalGroup
+    }
+
+    private func observeGroups() {
+        groupObservers.removeAll()
+        normalGroup.$tabs
+            .sink { [weak self] tabs in self?.normalTabs = tabs }
+            .store(in: &groupObservers)
+        privateGroup.$tabs
+            .sink { [weak self] tabs in self?.privateTabs = tabs }
+            .store(in: &groupObservers)
+    }
+
+    // MARK: - Tab groups
+
+    /// Shows `group` in this window. If another window already shows it, that window comes to
+    /// the front instead and this returns false.
+    @discardableResult
+    func show(_ group: TabGroup) -> Bool {
+        guard group !== normalGroup else {
+            if isPrivate {
+                setPrivate(false)
+            }
+            return true
+        }
+        if let other = services.tabStore.window(showing: group), other !== self {
+            if let session = other.sceneSession {
+                UIApplication.shared.activateSceneSession(for: UISceneSessionActivationRequest(session: session))
+            }
+            return false
+        }
+        normalGroup = group
+        observeGroups()
+        for tab in group.tabs {
+            adopt(tab)
+        }
+        if group.tabs.isEmpty {
+            newTab(isPrivate: false)
+        } else {
+            select(group.selectedTab ?? group.tabs[group.tabs.count - 1])
+        }
+        return true
+    }
+
+    /// Creates a named group, optionally moving the shown tabs into it, and shows it.
+    @discardableResult
+    func makeGroup(named name: String, movingCurrentTabs: Bool) -> TabGroup {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let group = services.tabStore.makeGroup(title: trimmed.isEmpty ? "Tab Group" : trimmed)
+        if movingCurrentTabs {
+            let source = normalGroup
+            let tabs = source.tabs
+            let selectedID = source.selectedTabID
+            source.removeAll()
+            for tab in tabs {
+                group.insert(tab)
+            }
+            group.selectedTabID = selectedID
+        }
+        show(group)
+        return group
+    }
+
+    /// Moves a normal tab into another group; it leaves this window unless that group is shown here.
+    func move(_ tab: TabModel, to group: TabGroup) {
+        guard !tab.isPrivate, group !== normalGroup, normalGroup.index(of: tab) != nil else { return }
+        let wasSelected = selectedTab === tab
+        let index = normalGroup.remove(tab) ?? 0
+        group.insert(tab)
+        if let window = services.tabStore.window(showing: group) {
+            tab.delegate = window.tabDelegate
+        } else {
+            tab.discardWebView()
+        }
+        if wasSelected {
+            if normalGroup.tabs.isEmpty {
+                newTab(isPrivate: false)
+            } else {
+                select(normalGroup.tabs[min(index, normalGroup.tabs.count - 1)])
+            }
+        }
+    }
+
+    /// Deletes a named group and its tabs. A window showing it falls back to its own group.
+    func delete(_ group: TabGroup) {
+        guard group.title != nil else { return }
+        if let window = services.tabStore.window(showing: group) {
+            window.show(window.defaultGroup)
+        }
+        for tab in group.tabs {
+            tab.close()
+            WebViewBudget.shared.forget(tab)
+        }
+        services.tabStore.remove(group)
+    }
+
+    /// Opens a copy of a tab right after it, with the same history.
+    func duplicate(_ tab: TabModel) {
+        var snapshot = tab.makeSnapshot()
+        snapshot.id = UUID()
+        let copy = TabModel(snapshot: snapshot, isPrivate: tab.isPrivate)
+        insert(copy, after: tab)
+        select(copy)
+    }
+
+    func closeOtherTabs(than tab: TabModel) {
+        let group = tab.isPrivate ? privateGroup : normalGroup
+        for other in group.tabs where other !== tab {
+            close(other)
+        }
     }
 
     var allTabs: [TabModel] {

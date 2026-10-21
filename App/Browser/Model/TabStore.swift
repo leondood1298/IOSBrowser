@@ -24,6 +24,31 @@ final class TabStore: ObservableObject {
         groups.first { $0.id == id }
     }
 
+    /// Tab groups the user named, oldest first. Untitled groups belong to a single window.
+    var namedGroups: [TabGroup] {
+        groups.filter { $0.title != nil }.sorted { $0.created < $1.created }
+    }
+
+    func rename(_ group: TabGroup, to title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        group.title = trimmed
+        objectWillChange.send()
+    }
+
+    // MARK: Windows
+
+    private let windows = NSHashTable<BrowserWindowModel>.weakObjects()
+
+    func register(_ window: BrowserWindowModel) {
+        windows.add(window)
+    }
+
+    /// The window currently showing `group`, if any.
+    func window(showing group: TabGroup) -> BrowserWindowModel? {
+        windows.allObjects.first { $0.normalGroup === group }
+    }
+
     /// A new, empty normal group (a window's own group when `title` is nil).
     func makeGroup(title: String? = nil) -> TabGroup {
         let group = TabGroup(isPrivate: false, title: title)

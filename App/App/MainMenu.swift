@@ -43,10 +43,25 @@ enum MainMenu {
         ])
         builder.insertSibling(bookmarks, afterMenu: history.identifier)
 
-        builder.insertChild(UIMenu(options: .displayInline, children: [
+        var tabCommands = [
             command("Show Next Tab", #selector(BrowserViewController.nextTabCommand(_:)), "\t", [.control]),
             command("Show Previous Tab", #selector(BrowserViewController.previousTabCommand(_:)), "\t", [.control, .shift]),
-        ]), atEndOfMenu: .window)
+        ]
+        for number in 1...9 {
+            tabCommands.append(command(
+                number == 9 ? "Show Last Tab" : "Show Tab \(number)",
+                #selector(BrowserViewController.selectTabCommand(_:)), "\(number)",
+                propertyList: number, hidden: true))
+        }
+        builder.insertChild(UIMenu(options: .displayInline, children: tabCommands), atEndOfMenu: .window)
+
+        // Settings… (⌘,) replaces whatever the system puts in the app menu's settings slot.
+        let settings = command("Settings…", #selector(BrowserViewController.showSettingsCommand(_:)), ",")
+        if builder.menu(for: .preferences) != nil {
+            builder.replaceChildren(ofMenu: .preferences) { _ in [settings] }
+        } else {
+            builder.insertSibling(UIMenu(options: .displayInline, children: [settings]), afterMenu: .about)
+        }
     }
 
     /// Commands must have unique (action, propertyList) pairs, or UIKit throws while building the

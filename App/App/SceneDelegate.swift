@@ -1,3 +1,4 @@
+import Combine
 import UIKit
 
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
@@ -5,6 +6,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var root: BrowserSplitViewController?
 
     private static let groupIDKey = "normalGroupID"
+    private static let activeGroupIDKey = "activeGroupID"
+    private var observers: Set<AnyCancellable> = []
 
     /// Activity used to open a link in a new window ("url" and "private" in userInfo).
     static let openURLActivityType = "io.github.leondood1298.browser.open-url"
@@ -20,10 +23,20 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         options connectionOptions: UIScene.ConnectionOptions
     ) {
         guard let windowScene = scene as? UIWindowScene else { return }
-        let model = BrowserWindowModel(restoringGroupID: Self.groupID(in: session))
+        let activeID = (session.userInfo?[Self.activeGroupIDKey] as? String).flatMap(UUID.init(uuidString:))
+        let model = BrowserWindowModel(restoringGroupID: Self.groupID(in: session), activeGroupID: activeID)
+        model.sceneSession = session
         var info = session.userInfo ?? [:]
-        info[Self.groupIDKey] = model.normalGroup.id.uuidString
+        info[Self.groupIDKey] = model.defaultGroup.id.uuidString
         session.userInfo = info
+        model.$normalGroup
+            .sink { [weak session] group in
+                guard let session else { return }
+                var info = session.userInfo ?? [:]
+                info[Self.activeGroupIDKey] = group.id.uuidString
+                session.userInfo = info
+            }
+            .store(in: &observers)
 
         let root = BrowserSplitViewController(model: model)
         let window = UIWindow(windowScene: windowScene)
@@ -31,6 +44,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.makeKeyAndVisible()
         self.window = window
         self.root = root
+        applyTheme()
+        AppServices.shared.preferences.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.applyTheme() }
+            .store(in: &observers)
 
         for context in connectionOptions.urlContexts {
             root.browser.handleIncomingURL(context.url)
@@ -54,6 +72,10 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         for context in URLContexts {
             root?.browser.handleIncomingURL(context.url)
         }
+    }
+
+    private func applyTheme() {
+        window?.overrideUserInterfaceStyle = AppServices.shared.preferences.theme.interfaceStyle
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {

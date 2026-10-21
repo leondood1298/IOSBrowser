@@ -68,9 +68,9 @@ final class TabOverviewViewController: UIViewController {
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
 
-        model.normalGroup.$tabs.merge(with: model.privateGroup.$tabs)
+        model.$normalTabs.combineLatest(model.$privateTabs)
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.collectionView.reloadData() }
+            .sink { [weak self] _, _ in self?.collectionView.reloadData() }
             .store(in: &observers)
         applyMode()
     }

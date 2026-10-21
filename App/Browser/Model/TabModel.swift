@@ -239,11 +239,10 @@ final class TabModel: NSObject, ObservableObject, Identifiable {
 
     /// The layout WebKit should request for `url`.
     func contentMode(for url: URL?) -> WKWebpagePreferences.ContentMode {
-        switch AppServices.shared.siteSettings.settings(for: url).layout {
-        case .desktop?: return .desktop
-        case .mobile?: return .mobile
-        case nil: return .recommended
-        }
+        let services = AppServices.shared
+        let layout = services.siteSettings.settings(for: url).layout ?? services.preferences.defaultLayout
+        // .recommended gives iPad Safari's desktop-class layout.
+        return layout == .mobile ? .mobile : .recommended
     }
 
     var currentZoom: Double {
@@ -270,8 +269,9 @@ final class TabModel: NSObject, ObservableObject, Identifiable {
     }
 
     func setLayout(_ layout: SiteLayout) {
+        let defaultLayout = AppServices.shared.preferences.defaultLayout
         AppServices.shared.siteSettings.update(url) { settings in
-            settings.layout = layout == .desktop ? nil : layout
+            settings.layout = layout == defaultLayout ? nil : layout
         }
         webView?.reloadFromOrigin()
     }
