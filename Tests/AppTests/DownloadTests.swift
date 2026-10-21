@@ -19,11 +19,10 @@ final class DownloadTests: XCTestCase {
         }
     }
 
-    private func makeManager(
-        file: JSONFileStore<[DownloadRecord]> = TestServices.temporaryStore("downloads.json"),
-        directory: URL = TestServices.temporaryDirectory()
-    ) -> DownloadManager {
-        DownloadManager(preferences: Preferences(), file: file, directory: directory)
+    private func makeManager(file: JSONFileStore<[DownloadRecord]>? = nil, directory: URL? = nil) -> DownloadManager {
+        DownloadManager(
+            preferences: Preferences(), file: file ?? TestServices.temporaryStore("downloads.json"),
+            directory: directory ?? TestServices.temporaryDirectory())
     }
 
     private func savedFile(named name: String, contents: String = "hello") throws -> URL {
