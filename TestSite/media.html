@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Media test page</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; margin: 40px; }
+    button { font-size: 20px; margin: 8px 0; }
+  </style>
+</head>
+<body>
+  <h1>Media test page</h1>
+  <audio id="tone" src="/generated/tone.wav" loop></audio>
+  <button id="play" onclick="document.getElementById('tone').play()">Play tone</button>
+  <button id="pause" onclick="document.getElementById('tone').pause()">Pause tone</button>
+</body>
+</html>

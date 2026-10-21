@@ -43,6 +43,10 @@ class Handler(SimpleHTTPRequestHandler):
     def respond(self, send_body):
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
+        if parsed.path == "/generated/tone.wav":
+            data = tone_wav()
+            self.send_bytes(data, "audio/wav", query, send_body)
+            return
         match = SIZE_RE.match(parsed.path)
         if match:
             size = int(match.group(1)) * {"b": 1, "kb": 1024, "mb": 1024 * 1024}[match.group(2).lower()]
@@ -61,6 +65,10 @@ class Handler(SimpleHTTPRequestHandler):
         with open(path, "rb") as handle:
             self.send_ranged(size, content_type, os.path.basename(path), handle, query, send_body,
                              generated=False, mtime=os.path.getmtime(path))
+
+    def send_bytes(self, data, content_type, query, send_body):
+        import io
+        self.send_ranged(len(data), content_type, "tone.wav", io.BytesIO(data), query, send_body, generated=False)
 
     def send_ranged(self, size, content_type, name, handle, query, send_body, generated, mtime=None):
         start, end = 0, size - 1
@@ -119,6 +127,24 @@ class Handler(SimpleHTTPRequestHandler):
                         time.sleep(expected - elapsed)
         except (BrokenPipeError, ConnectionResetError):
             pass
+
+
+_TONE = None
+
+
+def tone_wav(seconds=8, rate=22050, frequency=440):
+    """A mono 16-bit sine tone, built once."""
+    global _TONE
+    if _TONE is None:
+        import math
+        import struct
+        frames = b"".join(
+            struct.pack("<h", int(12000 * math.sin(2 * math.pi * frequency * i / rate)))
+            for i in range(seconds * rate))
+        header = b"RIFF" + struct.pack("<I", 36 + len(frames)) + b"WAVEfmt " + struct.pack(
+            "<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16) + b"data" + struct.pack("<I", len(frames))
+        _TONE = header + frames
+    return _TONE
 
 
 def parse_range(header, size):

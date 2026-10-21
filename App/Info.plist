@@ -43,6 +43,16 @@
 			</array>
 		</dict>
 	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>googlechrome</string>
+		<string>googlechromes</string>
+		<string>firefox</string>
+	</array>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>io.github.leondood1298.browser.open-url</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Websites you visit can ask to use the camera.</string>
 	<key>NSMicrophoneUsageDescription</key>

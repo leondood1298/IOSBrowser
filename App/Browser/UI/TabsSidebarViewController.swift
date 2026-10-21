@@ -1,25 +1,43 @@
 import Combine
 import UIKit
 
-/// The window's sidebar. For now it lists the window's tabs and private tabs; later milestones
-/// add tab groups, bookmarks, history, downloads and files.
+/// The window's sidebar: library lists, the window's tabs and its private tabs. Later
+/// milestones add tab groups, downloads and files.
 final class TabsSidebarViewController: UIViewController {
     private enum Section: Int, CaseIterable {
+        case library
         case tabs
         case privateTabs
 
         var title: String {
             switch self {
+            case .library: return "Library"
             case .tabs: return "Tabs"
             case .privateTabs: return "Private Tabs"
             }
         }
     }
 
+    private enum Item: Hashable {
+        case library(LibraryItem)
+        case tab(UUID)
+    }
+
+    private enum LibraryItem: Hashable {
+        case bookmarks
+        case history
+
+        var title: String { self == .bookmarks ? "Bookmarks" : "History" }
+        var symbol: String { self == .bookmarks ? "book" : "clock" }
+        var section: LibrarySection { self == .bookmarks ? .bookmarks : .history }
+    }
+
+    var onShowLibrary: ((LibrarySection) -> Void)?
+
     private let model: BrowserWindowModel
     private var observers: Set<AnyCancellable> = []
     private var collectionView: UICollectionView!
-    private var dataSource: UICollectionViewDiffableDataSource<Section, UUID>!
+    private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
 
     init(model: BrowserWindowModel) {
         self.model = model
@@ -51,11 +69,23 @@ final class TabsSidebarViewController: UIViewController {
         collectionView.accessibilityIdentifier = "sidebar"
         view.addSubview(collectionView)
 
-        let cellRegistration = UICollectionView.CellRegistration<UICollectionViewListCell, UUID> { [weak self] cell, _, id in
-            guard let tab = self?.model.allTabs.first(where: { $0.id == id }) else { return }
+        let cellRegistration = UICollectionView.CellRegistration<UICollectionViewListCell, Item> { [weak self] cell, _, item in
             var content = UIListContentConfiguration.sidebarCell()
-            content.text = tab.title
-            content.image = UIImage(systemName: tab.isPrivate ? "hand.raised" : "globe")
+            switch item {
+            case .library(let library):
+                content.text = library.title
+                content.image = UIImage(systemName: library.symbol)
+                cell.accessories = [.disclosureIndicator()]
+            case .tab(let id):
+                guard let tab = self?.model.allTabs.first(where: { $0.id == id }) else { return }
+                content.text = tab.title
+                content.image = self?.model.services.favicons.icon(for: tab.url)
+                    ?? UIImage(systemName: tab.isPrivate ? "hand.raised" : "globe")
+                content.imageProperties.maximumSize = CGSize(width: 20, height: 20)
+                cell.accessories = tab.isPlayingAudio ? [.customView(configuration: .init(
+                    customView: UIImageView(image: UIImage(systemName: tab.isMuted ? "speaker.slash" : "speaker.wave.2")),
+                    placement: .trailing()))] : []
+            }
             cell.contentConfiguration = content
         }
         let headerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
@@ -65,8 +95,8 @@ final class TabsSidebarViewController: UIViewController {
             content.text = self?.dataSource.sectionIdentifier(for: indexPath.section)?.title
             header.contentConfiguration = content
         }
-        dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) { collectionView, indexPath, id in
-            collectionView.dequeueConfiguredReusableCell(using: cellRegistration, for: indexPath, item: id)
+        dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) { collectionView, indexPath, item in
+            collectionView.dequeueConfiguredReusableCell(using: cellRegistration, for: indexPath, item: item)
         }
         dataSource.supplementaryViewProvider = { collectionView, _, indexPath in
             collectionView.dequeueConfiguredReusableSupplementary(using: headerRegistration, for: indexPath)
@@ -76,32 +106,52 @@ final class TabsSidebarViewController: UIViewController {
             .receive(on: RunLoop.main)
             .sink { [weak self] _, _, _ in self?.reload() }
             .store(in: &observers)
+        model.services.favicons.$revision
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.reload() }
+            .store(in: &observers)
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        reload()
     }
 
     private func reload() {
-        var snapshot = NSDiffableDataSourceSnapshot<Section, UUID>()
-        snapshot.appendSections([.tabs])
-        snapshot.appendItems(model.normalGroup.tabs.map(\.id), toSection: .tabs)
+        guard dataSource != nil else { return }
+        var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
+        snapshot.appendSections([.library, .tabs])
+        snapshot.appendItems([.library(.bookmarks), .library(.history)], toSection: .library)
+        snapshot.appendItems(model.normalGroup.tabs.map { .tab($0.id) }, toSection: .tabs)
         if !model.privateGroup.tabs.isEmpty {
             snapshot.appendSections([.privateTabs])
-            snapshot.appendItems(model.privateGroup.tabs.map(\.id), toSection: .privateTabs)
+            snapshot.appendItems(model.privateGroup.tabs.map { .tab($0.id) }, toSection: .privateTabs)
         }
         snapshot.reconfigureItems(snapshot.itemIdentifiers)
         dataSource.apply(snapshot, animatingDifferences: false)
-        if let selected = model.selectedTab, let indexPath = dataSource.indexPath(for: selected.id) {
+        if let selected = model.selectedTab, let indexPath = dataSource.indexPath(for: .tab(selected.id)) {
             collectionView.selectItem(at: indexPath, animated: false, scrollPosition: [])
         }
     }
 
     private func tab(at indexPath: IndexPath) -> TabModel? {
-        guard let id = dataSource.itemIdentifier(for: indexPath) else { return nil }
+        guard case .tab(let id)? = dataSource.itemIdentifier(for: indexPath) else { return nil }
         return model.allTabs.first { $0.id == id }
     }
 }
 
 extension TabsSidebarViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        guard let tab = tab(at: indexPath) else { return }
-        model.select(tab)
+        switch dataSource.itemIdentifier(for: indexPath) {
+        case .library(let library)?:
+            collectionView.deselectItem(at: indexPath, animated: true)
+            onShowLibrary?(library.section)
+        case .tab(let id)?:
+            if let tab = model.allTabs.first(where: { $0.id == id }) {
+                model.select(tab)
+            }
+        case nil:
+            break
+        }
     }
 }

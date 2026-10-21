@@ -15,6 +15,20 @@ extension TabModel: WKNavigationDelegate {
 
         switch ExternalLinkPolicy.action(for: url) {
         case .load:
+            guard isMainFrame else { return (allowPolicy(for: navigationAction), preferences) }
+            preferences.preferredContentMode = contentMode(for: url)
+            // Each site can have its own user agent. It must be set before the request goes out,
+            // so a mismatch re-issues the request with the right one (not for back/forward).
+            let agent = effectiveUserAgent(for: url)
+            let current = webView.customUserAgent.flatMap { $0.isEmpty ? nil : $0 }
+            if agent != current {
+                webView.customUserAgent = agent
+                let isGet = (navigationAction.request.httpMethod ?? "GET").uppercased() == "GET"
+                if navigationAction.navigationType != .backForward && isGet {
+                    webView.load(navigationAction.request)
+                    return (.cancel, preferences)
+                }
+            }
             return (allowPolicy(for: navigationAction), preferences)
         case .block:
             return (.cancel, preferences)
@@ -95,9 +109,15 @@ extension TabModel: WKNavigationDelegate {
         return (.useCredential, credential)
     }
 
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        resetMediaState()
+        applyPageZoom()
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         onStateChange?()
         captureSnapshot()
+        pageDidFinishLoading()
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -195,6 +215,32 @@ extension TabModel: WKUIDelegate {
         initiatedByFrame frame: WKFrameInfo
     ) async -> WKPermissionDecision {
         .prompt
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        contextMenuConfigurationForElement elementInfo: WKContextMenuElementInfo
+    ) async -> UIContextMenuConfiguration? {
+        guard let handler = delegate else { return nil }
+        let result = try? await webView.callAsyncJavaScript(
+            "return window.__browserContextInfo ? window.__browserContextInfo() : null;",
+            arguments: [:], in: nil, contentWorld: UserScripts.world)
+        let info = result as? [String: Any]
+        let link = elementInfo.linkURL ?? (info?["link"] as? String).flatMap(URL.init(string:))
+        let image = (info?["image"] as? String).flatMap(URL.init(string:))
+        return ContextMenus.configuration(
+            link: link, image: image, linkTitle: info?["title"] as? String, tab: self, handler: handler)
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        contextMenuForElement elementInfo: WKContextMenuElementInfo,
+        willCommitWithAnimator animator: UIContextMenuInteractionCommitAnimating
+    ) {
+        guard let url = elementInfo.linkURL else { return }
+        animator.addCompletion { [weak webView] in
+            webView?.load(URLRequest(url: url))
+        }
     }
 
     private static func dialogTitle(for frame: WKFrameInfo) -> String {

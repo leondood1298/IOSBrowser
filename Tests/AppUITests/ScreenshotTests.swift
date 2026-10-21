@@ -1,32 +1,19 @@
 import XCTest
 
-/// UI flows that double as visual checks: every `saveScreenshot` call is kept as a test
-/// attachment and, when CI sets `TEST_RUNNER_SHOTS_DIR`, written straight to that folder.
-/// Expects `scripts/testserver.py` serving `TestSite/` on port 8000.
-final class ScreenshotTests: XCTestCase {
-    private var app: XCUIApplication!
-
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-    }
-
+/// M1a flows: tabs, the tab overview, private tabs, page dialogs and pop-ups.
+final class ScreenshotTests: UITestCase {
     @MainActor
     func testTabsFlow() throws {
-        app = XCUIApplication()
-        app.launchArguments = ["--reset-state"]
-        app.launch()
-
-        let field = app.textFields["urlField"]
-        XCTAssertTrue(field.waitForExistence(timeout: 20))
+        launch()
         saveScreenshot("01-new-tab-page")
 
         open("localhost:8000")
-        XCTAssertTrue(app.webViews.staticTexts["Browser test page"].waitForExistence(timeout: 30))
+        waitForText("Browser test page")
         saveScreenshot("02-test-page")
 
         app.buttons["newTabButton"].tap()
         open("localhost:8000/second.html", tapField: false)
-        XCTAssertTrue(app.webViews.staticTexts["Second test page"].waitForExistence(timeout: 30))
+        waitForText("Second test page")
         saveScreenshot("03-two-tabs")
 
         app.buttons["tabOverviewButton"].tap()
@@ -42,11 +29,7 @@ final class ScreenshotTests: XCTestCase {
 
     @MainActor
     func testDialogsAndPopups() throws {
-        app = XCUIApplication()
-        app.launchArguments = ["--reset-state"]
-        app.launch()
-        XCTAssertTrue(app.textFields["urlField"].waitForExistence(timeout: 20))
-
+        launch()
         open("localhost:8000/dialogs.html")
         let alertButton = app.webViews.buttons["Show alert"]
         XCTAssertTrue(alertButton.waitForExistence(timeout: 30))
@@ -59,32 +42,10 @@ final class ScreenshotTests: XCTestCase {
         app.webViews.buttons["Show confirm"].tap()
         XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 10))
         app.alerts.firstMatch.buttons["OK"].tap()
-        XCTAssertTrue(app.webViews.staticTexts["confirmed"].waitForExistence(timeout: 10))
+        waitForText("confirmed", timeout: 10)
 
         app.webViews.links["Open second page in a new tab"].tap()
-        XCTAssertTrue(app.webViews.staticTexts["Second test page"].waitForExistence(timeout: 30))
+        waitForText("Second test page")
         saveScreenshot("07-popup-in-new-tab")
-    }
-
-    @MainActor
-    private func open(_ address: String, tapField: Bool = true) {
-        let field = app.textFields["urlField"]
-        if tapField {
-            field.tap()
-        }
-        field.typeText(address + "\n")
-    }
-
-    @MainActor
-    private func saveScreenshot(_ name: String) {
-        let screenshot = app.screenshot()
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
-
-        guard let directory = ProcessInfo.processInfo.environment["SHOTS_DIR"], !directory.isEmpty else { return }
-        let file = URL(fileURLWithPath: directory).appendingPathComponent("\(name).png")
-        try? screenshot.pngRepresentation.write(to: file)
     }
 }

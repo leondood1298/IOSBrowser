@@ -97,6 +97,58 @@ final class TabModelTests: XCTestCase {
 }
 
 @MainActor
+final class LibraryTests: XCTestCase {
+    func testRecentlyClosedTabsReopen() {
+        let model = BrowserWindowModel(services: TestServices.make(), restoringGroupID: nil)
+        let tab = model.newTab(url: URL(string: "https://example.com/closed"))
+        model.close(tab)
+        XCTAssertEqual(model.recentlyClosed.first?.snapshot.url?.absoluteString, "https://example.com/closed")
+        model.reopenLastClosedTab()
+        XCTAssertEqual(model.selectedTab?.url?.absoluteString, "https://example.com/closed")
+        XCTAssertTrue(model.recentlyClosed.isEmpty)
+    }
+
+    func testClosingPrivateTabsForgetsThem() {
+        let model = BrowserWindowModel(services: TestServices.make(), restoringGroupID: nil)
+        let privateTab = model.newTab(url: URL(string: "https://example.com/secret"), isPrivate: true)
+        model.close(privateTab)
+        XCTAssertEqual(model.recentlyClosed.count, 1)
+        model.newTab(isPrivate: true)
+        model.closeAllTabs(isPrivate: true)
+        XCTAssertTrue(model.recentlyClosed.isEmpty)
+    }
+
+    func testBookmarksAndShortcuts() {
+        let store = BookmarkStore(file: TestServices.temporaryStore("bookmarks.json"))
+        let url = URL(string: "https://www.example.com/")!
+        store.addBookmark(title: "Example", url: url)
+        store.addBookmark(title: "Again", url: URL(string: "https://www.example.com")!)
+        XCTAssertEqual(store.bookmarks.count, 1)
+        XCTAssertTrue(store.isBookmarked(URL(string: "https://www.example.com#top")))
+        store.addShortcut(title: "", url: url)
+        XCTAssertEqual(store.shortcuts.first?.title, "example.com")
+        store.removeShortcut(for: url)
+        XCTAssertTrue(store.shortcuts.isEmpty)
+    }
+
+    func testSiteSettingsRememberZoomPerSite() {
+        let sites = SiteSettingsStore(file: TestServices.temporaryStore("sites.json"))
+        sites.update(URL(string: "https://www.example.com")) { $0.zoom = 1.5 }
+        XCTAssertEqual(sites.settings(for: URL(string: "https://example.com/page")).zoom, 1.5)
+        XCTAssertNil(sites.settings(for: URL(string: "https://other.example")).zoom)
+    }
+
+    func testHistoryStoreRecordsAndClears() {
+        let history = HistoryStore(file: TestServices.temporaryStore("history.json"))
+        history.recordVisit(to: URL(string: "https://example.com/a")!, title: "A")
+        history.updateTitle("Alpha", for: URL(string: "https://example.com/a")!)
+        XCTAssertEqual(history.index.search().first?.title, "Alpha")
+        history.clear(since: nil)
+        XCTAssertTrue(history.index.search().isEmpty)
+    }
+}
+
+@MainActor
 enum TestServices {
     static func temporaryFile() -> JSONFileStore<SessionSnapshot> {
         let url = FileManager.default.temporaryDirectory
@@ -105,7 +157,18 @@ enum TestServices {
         return JSONFileStore(url: url)
     }
 
+    static func temporaryStore<Value: Codable>(_ name: String) -> JSONFileStore<Value> {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent(name)
+        return JSONFileStore(url: url)
+    }
+
     static func make() -> AppServices {
-        AppServices(tabStore: TabStore(file: temporaryFile()))
+        AppServices(
+            tabStore: TabStore(file: temporaryFile()),
+            history: HistoryStore(file: temporaryStore("history.json")),
+            bookmarks: BookmarkStore(file: temporaryStore("bookmarks.json")),
+            siteSettings: SiteSettingsStore(file: temporaryStore("sites.json")))
     }
 }

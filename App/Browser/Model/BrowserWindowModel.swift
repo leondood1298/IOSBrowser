@@ -12,6 +12,15 @@ final class BrowserWindowModel: ObservableObject {
 
     @Published private(set) var isPrivate = false
     @Published private(set) var selectedTab: TabModel?
+    /// Closed tabs, newest first, for ⇧⌘T. Private ones are dropped when private browsing ends.
+    @Published private(set) var recentlyClosed: [ClosedTab] = []
+
+    struct ClosedTab: Identifiable {
+        let snapshot: TabSnapshot
+        let isPrivate: Bool
+        var id: UUID { snapshot.id }
+        var title: String { URLDisplay.tabTitle(pageTitle: snapshot.title, url: snapshot.url) }
+    }
 
     /// Receives prompts and popup requests from every tab in this window.
     weak var tabDelegate: TabModelDelegate? {
@@ -106,6 +115,7 @@ final class BrowserWindowModel: ObservableObject {
         let group = tab.isPrivate ? privateGroup : normalGroup
         let wasSelected = selectedTab === tab
         guard let index = group.remove(tab) else { return }
+        remember(tab)
         tab.close()
         WebViewBudget.shared.forget(tab)
 
@@ -124,14 +134,43 @@ final class BrowserWindowModel: ObservableObject {
     func closeAllTabs(isPrivate closePrivate: Bool) {
         let group = closePrivate ? privateGroup : normalGroup
         for tab in group.tabs {
+            if closePrivate {
+                tab.close()
+                WebViewBudget.shared.forget(tab)
+                continue
+            }
+            remember(tab)
             tab.close()
             WebViewBudget.shared.forget(tab)
         }
         group.removeAll()
         if closePrivate {
+            recentlyClosed.removeAll { $0.isPrivate }
             setPrivate(false)
         } else if !isPrivate {
             newTab(isPrivate: false)
+        }
+    }
+
+    /// Reopens a closed tab with its history, after the selected tab.
+    func reopen(_ closed: ClosedTab) {
+        recentlyClosed.removeAll { $0.id == closed.id }
+        let tab = TabModel(snapshot: closed.snapshot, isPrivate: closed.isPrivate)
+        insert(tab, after: selectedTab?.isPrivate == closed.isPrivate ? selectedTab : nil)
+        select(tab)
+    }
+
+    func reopenLastClosedTab() {
+        if let last = recentlyClosed.first {
+            reopen(last)
+        }
+    }
+
+    private func remember(_ tab: TabModel) {
+        guard tab.url != nil else { return }
+        recentlyClosed.insert(ClosedTab(snapshot: tab.makeSnapshot(), isPrivate: tab.isPrivate), at: 0)
+        if recentlyClosed.count > 20 {
+            recentlyClosed.removeLast()
         }
     }
 

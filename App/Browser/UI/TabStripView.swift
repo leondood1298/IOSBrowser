@@ -7,6 +7,8 @@ final class TabStripView: UIView {
     var onSelect: ((TabModel) -> Void)?
     var onClose: ((TabModel) -> Void)?
     var onMove: ((Int, Int) -> Void)?
+    var onToggleMute: ((TabModel) -> Void)?
+    var favicons: FaviconStore?
 
     private var tabs: [TabModel] = []
     private var selectedID: UUID?
@@ -101,8 +103,9 @@ extension TabStripView: UICollectionViewDataSource, UICollectionViewDelegateFlow
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: TabStripCell.reuseID, for: indexPath)
         if let cell = cell as? TabStripCell {
             let tab = tabs[indexPath.item]
-            cell.configure(with: tab, isCurrent: tab.id == selectedID)
+            cell.configure(with: tab, isCurrent: tab.id == selectedID, favicons: favicons)
             cell.onClose = { [weak self] in self?.onClose?(tab) }
+            cell.onToggleMute = { [weak self] in self?.onToggleMute?(tab) }
         }
         return cell
     }
@@ -151,6 +154,7 @@ final class TabStripCell: UICollectionViewCell {
     static let reuseID = "TabStripCell"
 
     var onClose: (() -> Void)?
+    var onToggleMute: (() -> Void)?
     private(set) var tabID: UUID?
     var isCurrent = false { didSet { updateAppearance() } }
 
@@ -158,6 +162,7 @@ final class TabStripCell: UICollectionViewCell {
     private let titleLabel = UILabel()
     private let closeButton = UIButton(type: .system)
     private let spinner = UIActivityIndicatorView(style: .medium)
+    private let audioButton = UIButton(type: .system)
     private var observers: Set<AnyCancellable> = []
 
     override init(frame: CGRect) {
@@ -176,7 +181,12 @@ final class TabStripCell: UICollectionViewCell {
         closeButton.accessibilityLabel = "Close Tab"
         closeButton.addAction(UIAction { [weak self] _ in self?.onClose?() }, for: .touchUpInside)
 
-        let stack = UIStackView(arrangedSubviews: [closeButton, iconView, spinner, titleLabel])
+        audioButton.tintColor = .secondaryLabel
+        audioButton.accessibilityIdentifier = "tabAudioButton"
+        audioButton.isHidden = true
+        audioButton.addAction(UIAction { [weak self] _ in self?.onToggleMute?() }, for: .touchUpInside)
+
+        let stack = UIStackView(arrangedSubviews: [closeButton, iconView, spinner, titleLabel, audioButton])
         stack.axis = .horizontal
         stack.spacing = 6
         stack.alignment = .center
@@ -189,6 +199,8 @@ final class TabStripCell: UICollectionViewCell {
             closeButton.widthAnchor.constraint(equalToConstant: 24),
             closeButton.heightAnchor.constraint(equalToConstant: 24),
             iconView.widthAnchor.constraint(equalToConstant: 16),
+            iconView.heightAnchor.constraint(equalToConstant: 16),
+            audioButton.widthAnchor.constraint(equalToConstant: 24),
         ])
         contentView.layer.cornerRadius = 8
         contentView.layer.cornerCurve = .continuous
@@ -205,13 +217,36 @@ final class TabStripCell: UICollectionViewCell {
         super.prepareForReuse()
         observers.removeAll()
         onClose = nil
+        onToggleMute = nil
         tabID = nil
     }
 
-    func configure(with tab: TabModel, isCurrent: Bool) {
+    func configure(with tab: TabModel, isCurrent: Bool, favicons: FaviconStore?) {
         tabID = tab.id
         self.isCurrent = isCurrent
         observers.removeAll()
+        let refreshIcon = { [weak self, weak tab] in
+            guard let self, let tab else { return }
+            self.iconView.image = favicons?.icon(for: tab.url) ?? UIImage(systemName: tab.isPrivate ? "hand.raised" : "globe")
+        }
+        refreshIcon()
+        favicons?.$revision
+            .receive(on: RunLoop.main)
+            .sink { _ in refreshIcon() }
+            .store(in: &observers)
+        tab.$url
+            .receive(on: RunLoop.main)
+            .sink { _ in refreshIcon() }
+            .store(in: &observers)
+        tab.$isPlayingAudio.combineLatest(tab.$isMuted)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] playing, muted in
+                guard let self else { return }
+                self.audioButton.isHidden = !(playing || muted)
+                self.audioButton.setImage(UIImage(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill"), for: .normal)
+                self.audioButton.accessibilityLabel = muted ? "Unmute Tab" : "Mute Tab"
+            }
+            .store(in: &observers)
         tab.$pageTitle.combineLatest(tab.$url)
             .receive(on: RunLoop.main)
             .sink { [weak self, weak tab] _, _ in

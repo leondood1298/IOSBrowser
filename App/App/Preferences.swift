@@ -12,6 +12,8 @@ final class Preferences: ObservableObject {
             Key.askBeforeOpeningApps: true,
             Key.allowLinksToOpenApps: false,
             Key.searchEngineID: SearchEngine.google.id,
+            Key.defaultZoom: 1.0,
+            Key.defaultUserAgent: UserAgent.standard.rawValue,
         ])
     }
 
@@ -19,6 +21,9 @@ final class Preferences: ObservableObject {
         static let askBeforeOpeningApps = "askBeforeOpeningApps"
         static let allowLinksToOpenApps = "allowLinksToOpenApps"
         static let searchEngineID = "searchEngineID"
+        static let defaultZoom = "defaultZoom"
+        static let defaultUserAgent = "defaultUserAgent"
+        static let customUserAgent = "customUserAgent"
     }
 
     /// Ask before leaving the browser for mail, FaceTime or other apps.
@@ -39,5 +44,23 @@ final class Preferences: ObservableObject {
             return SearchEngine.builtIn.first { $0.id == id } ?? .google
         }
         set { objectWillChange.send(); defaults.set(newValue.id, forKey: Key.searchEngineID) }
+    }
+
+    /// Page zoom for sites without their own setting (1.0 = 100%).
+    var defaultZoom: Double {
+        get { defaults.double(forKey: Key.defaultZoom) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.defaultZoom) }
+    }
+
+    /// The user agent for sites without their own setting.
+    var defaultUserAgent: UserAgent {
+        get { UserAgent(rawValue: defaults.string(forKey: Key.defaultUserAgent) ?? "") ?? .standard }
+        set { objectWillChange.send(); defaults.set(newValue.rawValue, forKey: Key.defaultUserAgent) }
+    }
+
+    /// The string used when the user agent is set to Custom.
+    var customUserAgent: String {
+        get { defaults.string(forKey: Key.customUserAgent) ?? "" }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.customUserAgent) }
     }
 }
