@@ -85,14 +85,19 @@ final class DownloadsRingView: UIControl {
     }
 }
 
-/// Shows one file with Quick Look (until the dedicated viewers arrive).
+/// Shows files with Quick Look, starting at one of them (until the dedicated viewers arrive).
 final class FilePreviewController: QLPreviewController, QLPreviewControllerDataSource {
-    private let fileURL: URL
+    private let fileURLs: [URL]
 
-    init(fileURL: URL) {
-        self.fileURL = fileURL
+    init(fileURLs: [URL], index: Int = 0) {
+        self.fileURLs = fileURLs
         super.init(nibName: nil, bundle: nil)
         dataSource = self
+        currentPreviewItemIndex = min(max(index, 0), max(fileURLs.count - 1, 0))
+    }
+
+    convenience init(fileURL: URL) {
+        self.init(fileURLs: [fileURL])
     }
 
     @available(*, unavailable)
@@ -101,11 +106,11 @@ final class FilePreviewController: QLPreviewController, QLPreviewControllerDataS
     }
 
     func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
-        1
+        fileURLs.count
     }
 
     func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
-        fileURL as NSURL
+        fileURLs[index] as NSURL
     }
 }
 

@@ -6,6 +6,7 @@ nonisolated enum LibrarySection {
     case bookmarks
     case history
     case downloads
+    case files
 }
 
 /// The root of each window: a collapsible sidebar next to the browser.
@@ -37,6 +38,10 @@ final class BrowserSplitViewController: UISplitViewController, UISplitViewContro
 
     /// Shows bookmarks, history or downloads: in the sidebar when there's room, otherwise as a sheet.
     func showLibrary(_ section: LibrarySection) {
+        if section == .files {
+            browser.showFiles()
+            return
+        }
         if traitCollection.horizontalSizeClass == .regular {
             show(.primary)
             sidebarNavigation.popToRootViewController(animated: false)
@@ -49,6 +54,11 @@ final class BrowserSplitViewController: UISplitViewController, UISplitViewContro
     }
 
     private func pushLibrary(_ section: LibrarySection) {
+        // The file manager needs the room of a full sheet.
+        if section == .files {
+            browser.showFiles()
+            return
+        }
         sidebarNavigation.pushViewController(libraryController(section, inSheet: false), animated: true)
     }
 
@@ -75,6 +85,9 @@ final class BrowserSplitViewController: UISplitViewController, UISplitViewContro
             controller = UIHostingController(rootView: DownloadsView(
                 manager: services.downloads, actions: browser.downloadActions(dismissingFirst: inSheet)))
             controller.title = "Downloads"
+        case .files:
+            controller = UIHostingController(rootView: FilesView(files: services.files, actions: browser.fileActions()))
+            controller.title = "Files"
         }
         return controller
     }

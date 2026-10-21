@@ -540,6 +540,9 @@ final class BrowserViewController: UIViewController {
             UIAction(title: "Downloads", image: UIImage(systemName: "arrow.down.circle")) { [weak self] _ in
                 self?.showDownloads()
             },
+            UIAction(title: "Files", image: UIImage(systemName: "folder")) { [weak self] _ in
+                self?.showFiles()
+            },
         ]))
         sections.append(UIMenu(options: .displayInline, children: [
             model.isPrivate
@@ -623,7 +626,7 @@ final class BrowserViewController: UIViewController {
         return DownloadActions(
             openFile: { [weak self] item in run { self?.openDownloadedFile(item) } },
             share: { [weak self] item in run { self?.shareDownloadedFile(item) } },
-            showInFiles: { item in DownloadedFiles.showInFiles(item.fileURL) },
+            showInFiles: { [weak self] item in run { self?.showFiles(at: item.fileURL.deletingLastPathComponent()) } },
             openPage: { [weak self] url in run { self?.model.open(url) } },
             presenter: { [weak self] in self },
             isPrivate: { [weak self] in self?.model.isPrivate ?? false })
@@ -643,6 +646,98 @@ final class BrowserViewController: UIViewController {
             return
         }
         PageActions.share(items: [item.fileURL], from: self, sourceView: displayedWebView ?? view)
+    }
+
+    // MARK: - Files
+
+    /// Opens the file manager, at `folder` if given.
+    func showFiles(at folder: URL? = nil) {
+        let present = { [weak self] in
+            guard let self else { return }
+            let files = UIHostingController(rootView: FilesView(
+                files: self.services.files, actions: self.fileActions(), startFolder: folder))
+            files.modalPresentationStyle = .pageSheet
+            self.present(files, animated: true)
+        }
+        if presentedViewController != nil {
+            dismiss(animated: true, completion: present)
+        } else {
+            present()
+        }
+    }
+
+    func fileActions() -> FileActions {
+        FileActions(
+            open: { [weak self] item, siblings in self?.openFile(item, among: siblings) },
+            share: { [weak self] urls in self?.shareFiles(urls) },
+            export: { [weak self] urls in
+                self?.topController.present(UIDocumentPickerViewController(forExporting: urls, asCopy: true), animated: true)
+            },
+            saveToPhotos: { [weak self] urls in self?.saveFilesToPhotos(urls) },
+            openPage: { [weak self] url in
+                self?.dismiss(animated: true) { self?.model.open(url) }
+            },
+            sourcePage: { [weak self] url in self?.services.downloads.sourcePage(forFile: url) },
+            close: { [weak self] in self?.dismiss(animated: true) })
+    }
+
+    /// The controller on top, for presenting over the file manager or a popover.
+    private var topController: UIViewController {
+        var top: UIViewController = self
+        while let presented = top.presentedViewController, !presented.isBeingDismissed {
+            top = presented
+        }
+        return top
+    }
+
+    private func openFile(_ item: FileItem, among siblings: [FileItem]) {
+        let urls = siblings.contains(item) ? siblings.map(\.url) : [item.url]
+        let index = urls.firstIndex(of: item.url) ?? 0
+        topController.present(FilePreviewController(fileURLs: urls, index: index), animated: true)
+    }
+
+    private func shareFiles(_ urls: [URL]) {
+        let top = topController
+        let controller = UIActivityViewController(activityItems: urls, applicationActivities: nil)
+        if let popover = controller.popoverPresentationController {
+            popover.sourceView = top.view
+            popover.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 1, height: 1)
+            popover.permittedArrowDirections = []
+        }
+        top.present(controller, animated: true)
+    }
+
+    private func saveFilesToPhotos(_ urls: [URL]) {
+        Task {
+            do {
+                try await PhotoLibrary.save(urls)
+                Toast.show(urls.count == 1 ? "Saved to Photos" : "Saved \(urls.count) items to Photos",
+                           systemImage: "photo", in: topController.view)
+            } catch {
+                Toast.show(error.localizedDescription, systemImage: "exclamationmark.triangle", in: topController.view)
+            }
+        }
+    }
+
+    /// A file opened in Browser from another app: it's copied into Downloads (files already in
+    /// Browser's folders are just shown).
+    func importIncomingFile(_ url: URL) {
+        let files = services.files
+        if files.isSameOrInside(url, files.root) {
+            showFiles(at: url.deletingLastPathComponent())
+            return
+        }
+        let downloads = files.root.appendingPathComponent("Downloads", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+            let copied = try files.importFiles([url], into: downloads)
+            showFiles(at: downloads)
+            if let name = copied.first?.lastPathComponent {
+                Toast.show("Saved \(name) to Downloads", systemImage: "square.and.arrow.down", in: view)
+            }
+        } catch {
+            Toast.show(error.localizedDescription, systemImage: "exclamationmark.triangle", in: view)
+        }
     }
 
     // MARK: - Actions

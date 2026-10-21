@@ -170,6 +170,7 @@ enum TestServices {
 
     static func make() -> AppServices {
         let preferences = Preferences()
+        let filesRoot = temporaryDirectory()
         return AppServices(
             preferences: preferences,
             tabStore: TabStore(file: temporaryFile()),
@@ -178,6 +179,9 @@ enum TestServices {
             siteSettings: SiteSettingsStore(file: temporaryStore("sites.json")),
             searchEngines: SearchEngineStore(preferences: preferences, file: temporaryStore("engines.json")),
             downloads: DownloadManager(
-                preferences: preferences, file: temporaryStore("downloads.json"), directory: temporaryDirectory()))
+                preferences: preferences, file: temporaryStore("downloads.json"), directory: temporaryDirectory()),
+            files: FileStore(
+                preferences: preferences, root: filesRoot,
+                trash: TrashStore(root: filesRoot, directory: temporaryDirectory(), file: temporaryStore("trash.json"))))
     }
 }

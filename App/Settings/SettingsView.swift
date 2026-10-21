@@ -26,6 +26,7 @@ struct SettingsView: View {
                 securitySection
                 linksSection
                 downloadsSection
+                filesSection
                 aboutSection
             }
             .alert("Block Other Content Trackers?", isPresented: $confirmingContent) {
@@ -175,6 +176,16 @@ struct SettingsView: View {
             Text("Downloads")
         } footer: {
             Text("Sorting puts videos in Videos, music in Music, images in Pictures and documents in Documents. Other files go to Downloads. The Live Activity shows progress on the Lock Screen and keeps downloads going after you leave the app. Background downloads continue even when the app is closed; big files can be fetched in several parts at once, which is faster on most servers.")
+        }
+    }
+
+    private var filesSection: some View {
+        Section {
+            Toggle("Trash", isOn: binding(\.useTrash))
+        } header: {
+            Text("Files")
+        } footer: {
+            Text("Deleted files stay in the Trash for 30 days, so you can put them back.")
         }
     }
 

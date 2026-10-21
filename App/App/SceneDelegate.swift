@@ -56,7 +56,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             .store(in: &observers)
 
         for context in connectionOptions.urlContexts {
-            root.browser.handleIncomingURL(context.url)
+            open(context.url)
         }
         for activity in connectionOptions.userActivities where activity.activityType == Self.openURLActivityType {
             open(activity, in: model)
@@ -75,7 +75,16 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         for context in URLContexts {
-            root?.browser.handleIncomingURL(context.url)
+            open(context.url)
+        }
+    }
+
+    /// Links to the browser's URL scheme, or files opened in Browser from another app.
+    private func open(_ url: URL) {
+        if url.isFileURL {
+            root?.browser.importIncomingFile(url)
+        } else {
+            root?.browser.handleIncomingURL(url)
         }
     }
 

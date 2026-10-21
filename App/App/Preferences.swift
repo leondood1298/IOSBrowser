@@ -76,6 +76,7 @@ final class Preferences: ObservableObject {
             Key.backgroundDownloads: true,
             Key.downloadParts: 4,
             Key.downloadNotifications: true,
+            Key.useTrash: true,
         ])
         if defaults.object(forKey: Key.installDate) == nil {
             defaults.set(Date(), forKey: Key.installDate)
@@ -113,6 +114,7 @@ final class Preferences: ObservableObject {
         static let backgroundDownloads = "backgroundDownloads"
         static let downloadParts = "downloadParts"
         static let downloadNotifications = "downloadNotifications"
+        static let useTrash = "useTrash"
     }
 
     // MARK: Privacy
@@ -276,6 +278,12 @@ final class Preferences: ObservableObject {
     var downloadNotifications: Bool {
         get { defaults.bool(forKey: Key.downloadNotifications) }
         set { objectWillChange.send(); defaults.set(newValue, forKey: Key.downloadNotifications) }
+    }
+
+    /// Deleted files go to the Trash for 30 days instead of being deleted right away.
+    var useTrash: Bool {
+        get { defaults.bool(forKey: Key.useTrash) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.useTrash) }
     }
 
     /// How many parts a background download is fetched in at once (1 turns it off).

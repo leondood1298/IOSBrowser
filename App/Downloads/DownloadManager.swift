@@ -98,6 +98,12 @@ final class DownloadManager: NSObject, ObservableObject {
         items.first { $0.id == id }
     }
 
+    /// The page a downloaded file came from, for the file manager's "Open Source Page".
+    func sourcePage(forFile url: URL) -> URL? {
+        let path = url.standardizedFileURL.path
+        return items.first { $0.record.state == .finished && $0.fileURL.standardizedFileURL.path == path }?.record.pageURL
+    }
+
     // MARK: - Starting
 
     /// Takes over a download WebKit started for a page: a file link, or a response it can't show.

@@ -95,7 +95,7 @@ final class DownloadItem: ObservableObject, Identifiable {
 }
 
 extension FileCategory {
-    var symbolName: String {
+    nonisolated var symbolName: String {
         switch self {
         case .video: return "film"
         case .audio: return "music.note"

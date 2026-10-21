@@ -27,6 +27,9 @@ settings:
 packages:
   BrowserCore:
     path: Packages/BrowserCore
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation
+    exactVersion: 0.9.20
 
 targets:
   Browser:
@@ -38,6 +41,7 @@ targets:
           - "Info.plist"
     dependencies:
       - package: BrowserCore
+      - package: ZIPFoundation
     settings:
       base:
         PRODUCT_NAME: Browser

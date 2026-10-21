@@ -1,8 +1,8 @@
 import Combine
 import UIKit
 
-/// The window's sidebar: library lists (bookmarks, history, downloads), tab groups, the shown
-/// group's tabs and private tabs.
+/// The window's sidebar: library lists (bookmarks, history, downloads, files), tab groups, the
+/// shown group's tabs and private tabs.
 final class TabsSidebarViewController: UIViewController {
     nonisolated private enum Section: Int, CaseIterable {
         case library
@@ -31,12 +31,14 @@ final class TabsSidebarViewController: UIViewController {
         case bookmarks
         case history
         case downloads
+        case files
 
         var title: String {
             switch self {
             case .bookmarks: return "Bookmarks"
             case .history: return "History"
             case .downloads: return "Downloads"
+            case .files: return "Files"
             }
         }
 
@@ -45,6 +47,7 @@ final class TabsSidebarViewController: UIViewController {
             case .bookmarks: return "book"
             case .history: return "clock"
             case .downloads: return "arrow.down.circle"
+            case .files: return "folder"
             }
         }
 
@@ -53,6 +56,7 @@ final class TabsSidebarViewController: UIViewController {
             case .bookmarks: return .bookmarks
             case .history: return .history
             case .downloads: return .downloads
+            case .files: return .files
             }
         }
     }
@@ -183,7 +187,8 @@ final class TabsSidebarViewController: UIViewController {
         guard dataSource != nil else { return }
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
         snapshot.appendSections([.library, .groups, .tabs])
-        snapshot.appendItems([.library(.bookmarks), .library(.history), .library(.downloads)], toSection: .library)
+        snapshot.appendItems(
+            [.library(.bookmarks), .library(.history), .library(.downloads), .library(.files)], toSection: .library)
         snapshot.appendItems(groups.map { .group($0.id) } + [.newGroup], toSection: .groups)
         snapshot.appendItems(model.normalTabs.map { .tab($0.id) }, toSection: .tabs)
         if !model.privateTabs.isEmpty {
