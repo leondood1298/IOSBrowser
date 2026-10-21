@@ -10,6 +10,10 @@ privacy, and Aloha Browser for downloads, file management and media playback.
 
 The IPA is unsigned. Upload it to Signulous to sign and install it. The app needs iPadOS 26 or later.
 
+`Browser-*-with-share-extension.ipa` is the same app with its share extension ("Browser" in the share
+sheet: open a link, open it privately, or download it). It's separate because a signing service may
+not sign app extensions; if this one fails to install, use the plain IPA.
+
 `BrowserProbe-*.ipa` is a test copy that installs alongside the app as "Browser Probe". It asks for
 Apple's default-browser entitlement. If it shows up under Settings › Apps › Default Browser App after
 installing, the signing profile allows that entitlement and the real app can request it too.
@@ -20,20 +24,22 @@ Every build runs on GitHub Actions macOS runners, so no Mac is needed:
 
 | Workflow | When | What it does |
 | --- | --- | --- |
-| `ci.yml` | Every push and PR | BrowserCore tests, iPad simulator build, unit tests |
+| `ci.yml` | Every push and PR | BrowserCore and MediaKit tests, iPad simulator build, unit tests |
 | `ipa.yml` | Pushes to `main`, `v*` tags | Unsigned IPA, the rolling `nightly` pre-release, versioned releases |
 | `screenshots.yml` | Manual | UI flows on an iPad simulator, saved as screenshots |
 | `xcode27-canary.yml` | Pushes to `main` | Checks the project also builds with Xcode 27 (non-blocking) |
 
 The Xcode project is generated from `project.yml` with [XcodeGen](https://github.com/yonaskolb/XcodeGen),
-so it isn't checked in. To build on a Mac: `brew install xcodegen && xcodegen generate`, then open
-`Browser.xcodeproj`.
+so it isn't checked in. To build on a Mac: `bash scripts/fetch_vlckit.sh` (downloads MobileVLCKit into
+`Vendor/`), `brew install xcodegen && xcodegen generate`, then open `Browser.xcodeproj`.
 
 ## Layout
 
 ```
 App/                    the iPad app (UIKit shell, SwiftUI panels)
+Extensions/Share/       the share extension
 Packages/BrowserCore/   platform-independent logic with fast unit tests (swift test)
+Packages/MediaKit/      HLS segments to MP4 without re-encoding, AES-128 decryption (swift test on macOS)
 Tests/                  app unit tests and UI flows
 TestSite/               pages and files served to the UI tests by scripts/testserver.py
 scripts/                CI helpers
