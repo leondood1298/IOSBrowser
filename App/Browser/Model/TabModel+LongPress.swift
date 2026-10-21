@@ -35,6 +35,9 @@ extension TabModel: UIGestureRecognizerDelegate {
                 // What the page's detector knows about it (size, protection), if anything.
                 let media = detectedMedia.first { $0.url == mediaURL }
                     ?? DetectedMedia(url: mediaURL, kind: kind, pageTitle: pageTitle)
+                // The same press may have started WebKit's text selection nearby; the menu replaces it.
+                _ = try? await webView.callAsyncJavaScript(
+                    "window.getSelection().removeAllRanges();", arguments: [:], in: nil, contentWorld: UserScripts.world)
                 delegate?.showVideoMenu(media, at: point, in: webView, from: self)
                 return
             }
