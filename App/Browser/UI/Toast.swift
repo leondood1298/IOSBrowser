@@ -4,7 +4,10 @@ import UIKit
 /// like Firefox Focus's "Browsing history cleared".
 enum Toast {
     static func show(_ text: String, systemImage: String? = nil, in view: UIView) {
-        view.subviews.filter { $0.accessibilityIdentifier == "toast" }.forEach { $0.removeFromSuperview() }
+        // It goes on the window, above sheets and popovers, and outside the suggestions panel's
+        // part of the screen: that panel is accessibility-modal, which hides the views beside it.
+        let host = view.window ?? view
+        host.subviews.filter { $0.accessibilityIdentifier == "toast" }.forEach { $0.removeFromSuperview() }
 
         let label = UILabel()
         label.text = text
@@ -33,7 +36,7 @@ enum Toast {
         stack.translatesAutoresizingMaskIntoConstraints = false
         container.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(stack)
-        view.addSubview(container)
+        host.addSubview(container)
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: container.topAnchor),
             stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
