@@ -25,7 +25,9 @@ extension BrowserViewController {
             })
         let host = UIHostingController(rootView: picker)
         host.modalPresentationStyle = .popover
-        host.preferredContentSize = CGSize(width: 440, height: min(150 + CGFloat(media.count) * 64, 520))
+        // Room for the title, the rows and, when something can't be saved, the note under them.
+        let note: CGFloat = media.contains { !$0.isDownloadable } ? 90 : 0
+        host.preferredContentSize = CGSize(width: 440, height: min(130 + CGFloat(media.count) * 66 + note, 560))
         if let popover = host.popoverPresentationController {
             popover.sourceView = source
             popover.sourceRect = source.bounds
