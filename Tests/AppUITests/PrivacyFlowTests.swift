@@ -41,6 +41,7 @@ final class PrivacyFlowTests: UITestCase {
         XCTAssertTrue(app.buttons["confirmClearDataButton"].waitForExistence(timeout: 10))
         saveScreenshot("24-clear-data")
         app.buttons["confirmClearDataButton"].tap()
-        XCTAssertTrue(element("toast").waitForExistence(timeout: 10))
+        // Removing website data can take a while on a fresh simulator.
+        XCTAssertTrue(element("toast").waitForExistence(timeout: 30))
     }
 }

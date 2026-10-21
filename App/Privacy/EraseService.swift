@@ -46,6 +46,7 @@ enum EraseService {
 
     /// Clears data from normal browsing.
     static func clear(_ request: ClearDataRequest, services: AppServices) async {
+        let began = Date()
         let start = request.range.start
         if request.history {
             services.history.clear(since: start)
@@ -71,7 +72,8 @@ enum EraseService {
         if request.history && start == nil {
             services.favicons.removeAll()
         }
-        Log.event("Cleared browsing data (\(request.range.rawValue))", category: "privacy")
+        let seconds = Date().timeIntervalSince(began).formatted(.number.precision(.fractionLength(1)))
+        Log.event("Cleared browsing data (\(request.range.rawValue)) in \(seconds) s", category: "privacy")
     }
 
     private static let cacheTypes: Set<String> = [

@@ -70,7 +70,9 @@ final class BrowsingFeatureTests: UITestCase {
         app.webViews.links["Second page"].press(forDuration: 1.5)
         XCTAssertTrue(app.buttons["Open in New Tab"].waitForExistence(timeout: 10))
         saveScreenshot("13-link-menu")
-        dismissMenu(containing: "Open in New Tab")
+        // Choosing an item closes the menu reliably (tapping beside it sometimes doesn't).
+        app.buttons["Copy Link"].tap()
+        XCTAssertTrue(app.buttons["Open in New Tab"].waitForNonExistence(timeout: 15))
 
         let image = app.webViews.images["Sample image"]
         XCTAssertTrue(image.waitForExistence(timeout: 10))

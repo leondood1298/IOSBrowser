@@ -2,43 +2,36 @@ import UIKit
 
 /// The browser's window. Menu bar and keyboard commands travel up the responder chain from
 /// whatever has focus, but the address field (in the navigation bar) and the sidebar aren't
-/// inside the browser's view, so their chain never meets the browser. Browser commands that
-/// reach the window are handed to the browser here, so shortcuts work wherever the focus is.
+/// inside the browser's view, so their chain never meets the browser, and with nothing focused
+/// commands start at the window. The window is in every chain, so it takes the browser's
+/// commands as well and passes them on. (When the browser is in the chain it handles them first.)
 final class BrowserWindow: UIWindow {
     weak var browser: BrowserViewController?
 
-    /// The browser's own commands (all named "…Command:").
-    private func isBrowserCommand(_ action: Selector) -> Bool {
-        guard let browser else { return false }
-        return NSStringFromSelector(action).hasSuffix("Command:") && browser.responds(to: action)
-    }
-
-    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        if isBrowserCommand(action) {
-            return browser?.canPerformAction(action, withSender: sender) ?? false
-        }
-        return super.canPerformAction(action, withSender: sender)
-    }
-
-    override func target(forAction action: Selector, withSender sender: Any?) -> Any? {
-        if isBrowserCommand(action), let browser, browser.canPerformAction(action, withSender: sender) {
-            return browser
-        }
-        return super.target(forAction: action, withSender: sender)
-    }
-
-    override func forwardingTarget(for aSelector: Selector!) -> Any? {
-        if let aSelector, isBrowserCommand(aSelector) {
-            return browser
-        }
-        return super.forwardingTarget(for: aSelector)
-    }
-
     override func validate(_ command: UICommand) {
-        if isBrowserCommand(command.action) {
-            browser?.validate(command)
-            return
-        }
         super.validate(command)
+        browser?.validate(command)
     }
+
+    @objc func newTabCommand(_ sender: Any?) { browser?.newTabCommand(sender) }
+    @objc func newPrivateTabCommand(_ sender: Any?) { browser?.newPrivateTabCommand(sender) }
+    @objc func closeTabCommand(_ sender: Any?) { browser?.closeTabCommand(sender) }
+    @objc func reopenClosedTabCommand(_ sender: Any?) { browser?.reopenClosedTabCommand(sender) }
+    @objc func openLocationCommand(_ sender: Any?) { browser?.openLocationCommand(sender) }
+    @objc func reloadCommand(_ sender: Any?) { browser?.reloadCommand(sender) }
+    @objc func stopCommand(_ sender: Any?) { browser?.stopCommand(sender) }
+    @objc func goBackCommand(_ sender: Any?) { browser?.goBackCommand(sender) }
+    @objc func goForwardCommand(_ sender: Any?) { browser?.goForwardCommand(sender) }
+    @objc func showAllTabsCommand(_ sender: Any?) { browser?.showAllTabsCommand(sender) }
+    @objc func nextTabCommand(_ sender: Any?) { browser?.nextTabCommand(sender) }
+    @objc func previousTabCommand(_ sender: Any?) { browser?.previousTabCommand(sender) }
+    @objc func addBookmarkCommand(_ sender: Any?) { browser?.addBookmarkCommand(sender) }
+    @objc func showBookmarksCommand(_ sender: Any?) { browser?.showBookmarksCommand(sender) }
+    @objc func showHistoryCommand(_ sender: Any?) { browser?.showHistoryCommand(sender) }
+    @objc func zoomInCommand(_ sender: Any?) { browser?.zoomInCommand(sender) }
+    @objc func zoomOutCommand(_ sender: Any?) { browser?.zoomOutCommand(sender) }
+    @objc func actualSizeCommand(_ sender: Any?) { browser?.actualSizeCommand(sender) }
+    @objc func showSettingsCommand(_ sender: Any?) { browser?.showSettingsCommand(sender) }
+    @objc func eraseCommand(_ sender: Any?) { browser?.eraseCommand(sender) }
+    @objc func selectTabCommand(_ sender: UICommand) { browser?.selectTabCommand(sender) }
 }
