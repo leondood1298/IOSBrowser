@@ -784,7 +784,8 @@ final class BrowserViewController: UIViewController {
     }
 
     /// Images open in the image viewer with the folder's other images, PDFs in the PDF viewer,
-    /// everything else in Quick Look.
+    /// music and video in the players (VLC for formats the system player can't open), everything
+    /// else in Quick Look.
     private func openFile(_ item: FileItem, among siblings: [FileItem]) {
         if item.isImage && ImageLoader.canShow(item.url) {
             let images = siblings.filter { $0.isImage && ImageLoader.canShow($0.url) }.map(\.url)
@@ -804,6 +805,14 @@ final class BrowserViewController: UIViewController {
                 urls: urls, index: urls.firstIndex(of: item.url) ?? 0, preferences: services.preferences,
                 positions: services.playbackPositions
             ).present(from: topController)
+        } else if VLCPlayerViewController.canPlay(item.url) {
+            // Formats the system player can't open play in VLC, with the folder's others of that kind.
+            let others = siblings.filter { !$0.isPlayableMedia && VLCPlayerViewController.canPlay($0.url) }.map(\.url)
+            let urls = others.contains(item.url) ? others : [item.url]
+            topController.present(
+                VLCPlayerViewController(
+                    urls: urls, index: urls.firstIndex(of: item.url) ?? 0, positions: services.playbackPositions),
+                animated: true)
         } else if item.contentType?.conforms(to: .pdf) == true {
             let viewer = UINavigationController(
                 rootViewController: PDFViewerController(url: item.url, preferences: services.preferences))

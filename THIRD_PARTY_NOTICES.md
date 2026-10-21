@@ -11,5 +11,6 @@ Third-party code and data bundled in this app, with their licenses.
 | [SWCompression](https://github.com/tsolomko/SWCompression) 4.9.1 and [BitByteData](https://github.com/tsolomko/BitByteData) | Extracting 7-Zip, TAR, GZip, BZip2 and XZ files | MIT License, © Timofey Solomko |
 | [Unrar.swift](https://github.com/mtgto/Unrar.swift) 0.5.4 | Extracting RAR archives; the RAR test files in `Tests/AppTests/Fixtures` come from its tests | MIT License, © mtgto |
 | [unRAR](https://www.rarlab.com/rar_add.htm) (included in Unrar.swift) | RAR decompression | unRAR license: free to use and distribute, but not to recreate the RAR compression algorithm |
+| [MobileVLCKit](https://code.videolan.org/videolan/VLCKit) 3.7.3 (VLC) | Playing video and audio formats the system player can't open; downloaded at build time by `scripts/fetch_vlckit.sh` | GNU Lesser General Public License 2.1; source at code.videolan.org/videolan/VLCKit |
 
 Files adapted from Firefox Focus keep their MPL-2.0 notices and stay under the MPL-2.0.

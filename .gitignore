@@ -13,6 +13,9 @@ DerivedData/
 shots/
 *.log
 
+# Downloaded by scripts/fetch_vlckit.sh (CI caches it)
+Vendor/
+
 # Tooling
 xcuserdata/
 .DS_Store
