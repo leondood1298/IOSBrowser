@@ -87,6 +87,8 @@ struct FolderView: View {
     @State private var errorMessage: String?
     @State private var storage: (used: Int64, available: Int64?)?
     @State private var dropTargeted = false
+    @State private var passwordTarget: FileItem?
+    @State private var archivePassword = ""
 
     private var isRoot: Bool {
         folder.standardizedFileURL == files.root.standardizedFileURL
@@ -156,6 +158,18 @@ struct FolderView: View {
                 Text(AppServices.shared.preferences.useTrash
                      ? "Deleted items stay in the Trash for 30 days."
                      : "This can't be undone.")
+            }
+            .alert("Password", isPresented: Binding(get: { passwordTarget != nil }, set: { if !$0 { passwordTarget = nil } })) {
+                SecureField("Password", text: $archivePassword)
+                Button("Cancel", role: .cancel) { passwordTarget = nil }
+                Button("Extract") {
+                    if let item = passwordTarget, let format = item.archiveFormat {
+                        extract(item, format: format, password: archivePassword)
+                    }
+                    passwordTarget = nil
+                }
+            } message: {
+                Text("“\(passwordTarget?.name ?? "")” is protected with a password.")
             }
             .alert("Couldn't Finish", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -460,15 +474,19 @@ struct FolderView: View {
         }
     }
 
-    private func extract(_ item: FileItem, format: ArchiveFormat) {
+    private func extract(_ item: FileItem, format: ArchiveFormat, password: String? = nil) {
         let parent = item.url.deletingLastPathComponent()
         let destination = FileNaming.uniqueURL(in: parent, for: ArchivePaths.folderName(forArchive: item.name))
         Task {
             do {
                 try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
                 try await files.perform("Extracting \(item.name)…") { progress in
-                    try ArchiveService.extract(item.url, format: format, to: destination, progress: progress)
+                    try ArchiveService.extract(item.url, format: format, to: destination, password: password, progress: progress)
                 }
+            } catch ArchiveService.Failure.needsPassword {
+                try? FileManager.default.removeItem(at: destination)
+                archivePassword = ""
+                passwordTarget = item
             } catch {
                 try? FileManager.default.removeItem(at: destination)
                 errorMessage = error.localizedDescription

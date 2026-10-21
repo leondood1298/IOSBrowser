@@ -30,6 +30,12 @@ packages:
   ZIPFoundation:
     url: https://github.com/weichsel/ZIPFoundation
     exactVersion: 0.9.20
+  SWCompression:
+    url: https://github.com/tsolomko/SWCompression
+    exactVersion: 4.9.1
+  Unrar:
+    url: https://github.com/mtgto/Unrar.swift
+    exactVersion: 0.5.4
 
 targets:
   Browser:
@@ -42,6 +48,8 @@ targets:
     dependencies:
       - package: BrowserCore
       - package: ZIPFoundation
+      - package: SWCompression
+      - package: Unrar
     settings:
       base:
         PRODUCT_NAME: Browser

@@ -129,6 +129,70 @@ final class FileStoreTests: XCTestCase {
         XCTAssertEqual(store.displayPath(of: root.appendingPathComponent("Downloads/Videos")), "Downloads › Videos")
     }
 
+    /// A copy of a test archive (Tests/AppTests/Fixtures) in the test's folder.
+    private func fixture(_ name: String) throws -> URL {
+        let parts = name.split(separator: ".", maxSplits: 1).map(String.init)
+        let bundle = Bundle(for: FileStoreTests.self)
+        let source = try XCTUnwrap(bundle.url(forResource: parts[0], withExtension: parts[1]), "Missing fixture \(name)")
+        let copy = root.appendingPathComponent(name)
+        try FileManager.default.copyItem(at: source, to: copy)
+        return copy
+    }
+
+    private func regularFiles(in folder: URL) -> [URL] {
+        let enumerator = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey])
+        return (enumerator?.allObjects ?? []).compactMap { $0 as? URL }.filter {
+            (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+        }
+    }
+
+    func testExtractRAR() throws {
+        let store = makeStore()
+        let archive = try fixture("test.rar")
+        let output = try store.createFolder(named: "test", in: root)
+        try ArchiveService.extract(archive, format: .rar, to: output) { _ in }
+        let readme = output.appendingPathComponent("README.md")
+        XCTAssertEqual(try Data(contentsOf: readme).count, 40)
+    }
+
+    func testProtectedRARAsksForPassword() throws {
+        let store = makeStore()
+        let archive = try fixture("encrypted.rar")
+        let output = try store.createFolder(named: "encrypted", in: root)
+        XCTAssertThrowsError(try ArchiveService.extract(archive, format: .rar, to: output) { _ in }) { error in
+            XCTAssertEqual(error as? ArchiveService.Failure, .needsPassword)
+        }
+        try ArchiveService.extract(archive, format: .rar, to: output, password: "password") { _ in }
+        let files = regularFiles(in: output)
+        XCTAssertFalse(files.isEmpty)
+        XCTAssertTrue(files.allSatisfy { ((try? $0.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) > 0 })
+    }
+
+    func testExtractCompressedTars() throws {
+        let store = makeStore()
+        for name in ["sample.tar.gz", "sample.tar.xz"] {
+            let archive = try fixture(name)
+            let output = try store.createFolder(named: ArchivePaths.folderName(forArchive: name), in: root)
+            let format = try XCTUnwrap(ArchiveFormat.byExtension(name))
+            try ArchiveService.extract(archive, format: format, to: output) { _ in }
+            let hello = try String(contentsOf: output.appendingPathComponent("sample/hello.txt"), encoding: .utf8)
+            XCTAssertEqual(hello, "hello from tar", name)
+            let nested = try String(contentsOf: output.appendingPathComponent("sample/nested/data.txt"), encoding: .utf8)
+            XCTAssertEqual(nested, "nested", name)
+        }
+    }
+
+    func testDecompressSingleFiles() throws {
+        let store = makeStore()
+        for (name, text) in [("notes.txt.gz", "gzip text"), ("notes.txt.bz2", "bzip2 text")] {
+            let archive = try fixture(name)
+            let output = try store.createFolder(named: "out", in: root)
+            let format = try XCTUnwrap(ArchiveFormat.byExtension(name))
+            try ArchiveService.extract(archive, format: format, to: output) { _ in }
+            XCTAssertEqual(try String(contentsOf: output.appendingPathComponent("notes.txt"), encoding: .utf8), text, name)
+        }
+    }
+
     func testZipAndExtract() throws {
         let store = makeStore()
         let folder = try store.createFolder(named: "Album", in: root)
