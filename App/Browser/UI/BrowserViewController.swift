@@ -126,15 +126,15 @@ final class BrowserViewController: UIViewController {
         }
     }
 
-    // Keyboard shortcuts start at the first responder; with none they reach nobody. So the
-    // browser takes the focus whenever nothing else in the window has it.
-    override var canBecomeFirstResponder: Bool { true }
-
+    // Keyboard shortcuts and arrow-key scrolling start at the first responder, so, as in Safari,
+    // the page takes the focus whenever nothing else in the window has it. (Shortcuts typed with
+    // nothing focused start at the window, which passes the browser's commands on.)
     func takeFocusIfIdle() {
-        guard view.window != nil, presentedViewController == nil else { return }
+        guard view.window != nil, presentedViewController == nil,
+              let webView = displayedWebView, webView.window != nil else { return }
         let current = UIResponder.current
         if current == nil || current is UIWindow {
-            becomeFirstResponder()
+            webView.becomeFirstResponder()
         }
     }
 
@@ -815,7 +815,11 @@ final class BrowserViewController: UIViewController {
     }
 
     private func showShield(from source: UIView) {
-        guard let tab = model.selectedTab, presentedViewController == nil else { return }
+        guard let tab = model.selectedTab else { return }
+        if let presented = presentedViewController {
+            Log.event("Shield not shown: already presenting \(type(of: presented))")
+            return
+        }
         let shield = ShieldView(tab: tab, services: services) { [weak self] in
             ContentBlocker.shared.settingsChanged()
             self?.refreshShield()
