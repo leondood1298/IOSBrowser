@@ -22,7 +22,7 @@ final class ScreenshotTests: UITestCase {
         saveScreenshot("04-tab-overview")
         app.buttons["overviewDoneButton"].tap()
 
-        app.typeKey("n", modifierFlags: [.command, .shift])
+        openPrivateTab()
         XCTAssertTrue(element("newTabPage").waitForExistence(timeout: 10))
         saveScreenshot("05-private-tab")
     }
