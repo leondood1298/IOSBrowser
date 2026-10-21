@@ -42,7 +42,7 @@ extension SearchEngine {
     public static let google = SearchEngine(
         id: "google", name: "Google",
         searchTemplate: "https://www.google.com/search?q=%s&ie=utf-8&oe=utf-8",
-        suggestTemplate: "https://www.google.com/complete/search?client=firefox&q=%s")
+        suggestTemplate: "https://www.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&q=%s")
 
     public static let duckDuckGo = SearchEngine(
         id: "duckduckgo", name: "DuckDuckGo",

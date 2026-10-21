@@ -314,7 +314,7 @@ final class BrowserWindowModel: ObservableObject {
 
     /// Opens what the user typed: a URL, or a search with the chosen engine.
     func open(input: String, in tab: TabModel? = nil) {
-        guard let url = Self.url(for: input, engine: services.preferences.searchEngine) else { return }
+        guard let url = Self.url(for: input, engine: services.searchEngines.defaultEngine) else { return }
         open(url, in: tab)
     }
 

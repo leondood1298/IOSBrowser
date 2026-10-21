@@ -141,10 +141,10 @@ struct SettingsView: View {
 
     private var searchSection: some View {
         Section("Search") {
-            Picker("Search Engine", selection: binding(\.searchEngine)) {
-                ForEach(SearchEngine.builtIn) { engine in
-                    Text(engine.name).tag(engine)
-                }
+            NavigationLink {
+                SearchSettingsView(engines: AppServices.shared.searchEngines, preferences: preferences)
+            } label: {
+                LabeledContent("Search", value: AppServices.shared.searchEngines.defaultEngine.name)
             }
         }
     }

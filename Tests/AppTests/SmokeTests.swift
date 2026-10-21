@@ -165,10 +165,13 @@ enum TestServices {
     }
 
     static func make() -> AppServices {
-        AppServices(
+        let preferences = Preferences()
+        return AppServices(
+            preferences: preferences,
             tabStore: TabStore(file: temporaryFile()),
             history: HistoryStore(file: temporaryStore("history.json")),
             bookmarks: BookmarkStore(file: temporaryStore("bookmarks.json")),
-            siteSettings: SiteSettingsStore(file: temporaryStore("sites.json")))
+            siteSettings: SiteSettingsStore(file: temporaryStore("sites.json")),
+            searchEngines: SearchEngineStore(preferences: preferences, file: temporaryStore("engines.json")))
     }
 }

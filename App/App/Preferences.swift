@@ -66,6 +66,9 @@ final class Preferences: ObservableObject {
             Key.upgradeToHTTPS: true,
             Key.fraudWarnings: true,
             Key.appLock: AppLockMode.off.rawValue,
+            Key.searchSuggestions: false,
+            Key.autocompleteTopSites: true,
+            Key.autocompleteCustomSites: true,
         ])
         if defaults.object(forKey: Key.installDate) == nil {
             defaults.set(Date(), forKey: Key.installDate)
@@ -91,6 +94,11 @@ final class Preferences: ObservableObject {
         static let appLock = "appLock"
         static let lifetimeTrackers = "lifetimeTrackersBlocked"
         static let installDate = "installDate"
+        static let searchSuggestions = "searchSuggestions"
+        static let searchSuggestionsPrompted = "searchSuggestionsPrompted"
+        static let autocompleteTopSites = "autocompleteTopSites"
+        static let autocompleteCustomSites = "autocompleteCustomSites"
+        static let customDomains = "customAutocompleteDomains"
     }
 
     // MARK: Privacy
@@ -183,12 +191,38 @@ final class Preferences: ObservableObject {
         set { objectWillChange.send(); defaults.set(newValue, forKey: Key.allowLinksToOpenApps) }
     }
 
-    var searchEngine: SearchEngine {
-        get {
-            let id = defaults.string(forKey: Key.searchEngineID)
-            return SearchEngine.builtIn.first { $0.id == id } ?? .google
-        }
-        set { objectWillChange.send(); defaults.set(newValue.id, forKey: Key.searchEngineID) }
+    /// The chosen search engine; SearchEngineStore resolves it.
+    var searchEngineID: String {
+        get { defaults.string(forKey: Key.searchEngineID) ?? SearchEngine.google.id }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.searchEngineID) }
+    }
+
+    /// Opt-in, as in Firefox Focus: what you type is sent to the search engine.
+    var searchSuggestionsEnabled: Bool {
+        get { defaults.bool(forKey: Key.searchSuggestions) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.searchSuggestions) }
+    }
+
+    /// Whether the "Show search suggestions?" prompt has been answered.
+    var searchSuggestionsPrompted: Bool {
+        get { defaults.bool(forKey: Key.searchSuggestionsPrompted) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.searchSuggestionsPrompted) }
+    }
+
+    var autocompleteTopSites: Bool {
+        get { defaults.bool(forKey: Key.autocompleteTopSites) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.autocompleteTopSites) }
+    }
+
+    var autocompleteCustomSites: Bool {
+        get { defaults.bool(forKey: Key.autocompleteCustomSites) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.autocompleteCustomSites) }
+    }
+
+    /// The user's own sites for URL autocomplete ("My Sites").
+    var customAutocompleteDomains: [String] {
+        get { defaults.stringArray(forKey: Key.customDomains) ?? [] }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.customDomains) }
     }
 
     /// Page zoom for sites without their own setting (1.0 = 100%).

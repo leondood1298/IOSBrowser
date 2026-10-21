@@ -13,6 +13,11 @@ final class AddressField: UITextField {
     var onTextChange: ((String) -> Void)?
     var onEditingEnded: (() -> Void)?
     var onPasteAndGo: ((String) -> Void)?
+    /// Text to edit instead of the URL (the search terms on a results page).
+    var editingTextProvider: ((URL?) -> String?)?
+    /// The rest of a site's address for what's been typed (inline autocomplete).
+    var completionProvider: ((String) -> String?)?
+    private var lastEditWasInsertionAtEnd = false
 
     private let lockView = UIImageView(image: UIImage(systemName: "lock.fill"))
     private let shieldButton = UIButton(type: .system)
@@ -51,7 +56,7 @@ final class AddressField: UITextField {
         textContentType = .URL
         accessibilityIdentifier = "urlField"
         delegate = self
-        addAction(UIAction { [weak self] _ in self?.onTextChange?(self?.text ?? "") }, for: .editingChanged)
+        addAction(UIAction { [weak self] _ in self?.textDidChange() }, for: .editingChanged)
 
         pageSettingsButton.setImage(UIImage(systemName: "textformat.size"), for: .normal)
         pageSettingsButton.tintColor = .label
@@ -105,6 +110,21 @@ final class AddressField: UITextField {
         refresh()
     }
 
+    /// Reports the typed text and, after typing at the end, completes a known site inline with
+    /// the added part selected, so typing on replaces it and Delete removes it.
+    private func textDidChange() {
+        let typed = text ?? ""
+        onTextChange?(typed)
+        guard lastEditWasInsertionAtEnd, markedTextRange == nil else { return }
+        lastEditWasInsertionAtEnd = false
+        guard let suffix = completionProvider?(typed), !suffix.isEmpty else { return }
+        text = typed + suffix
+        if let start = position(from: beginningOfDocument, offset: typed.count),
+           let end = position(from: start, offset: suffix.count) {
+            selectedTextRange = textRange(from: start, to: end)
+        }
+    }
+
     /// Called when the window switches tabs. If the field is being edited, its text is replaced
     /// with the new tab's address so it never shows the previous tab's URL.
     func showTab(url: URL?) {
@@ -146,11 +166,19 @@ final class AddressField: UITextField {
 extension AddressField: UITextFieldDelegate {
     func textFieldDidBeginEditing(_ textField: UITextField) {
         textAlignment = .natural
-        text = URLDisplay.editableText(for: currentURL)
+        text = editingTextProvider?(currentURL) ?? URLDisplay.editableText(for: currentURL)
         onTextChange?(text ?? "")
         DispatchQueue.main.async { [weak self] in
             self?.selectAll(nil)
         }
+    }
+
+    func textField(
+        _ textField: UITextField, shouldChangeCharactersIn range: NSRange, replacementString string: String
+    ) -> Bool {
+        let length = (text ?? "").utf16.count
+        lastEditWasInsertionAtEnd = !string.isEmpty && range.location + range.length == length
+        return true
     }
 
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {

@@ -25,7 +25,7 @@ final class SearchEngineTests: XCTestCase {
     func testSuggestURL() {
         XCTAssertEqual(
             SearchEngine.google.suggestURL(for: "swift")?.absoluteString,
-            "https://www.google.com/complete/search?client=firefox&q=swift")
+            "https://www.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&q=swift")
         XCTAssertNil(SearchEngine.startpage.suggestURL(for: "swift"))
     }
 

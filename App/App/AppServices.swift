@@ -11,6 +11,7 @@ final class AppServices {
     let bookmarks: BookmarkStore
     let siteSettings: SiteSettingsStore
     let favicons: FaviconStore
+    let searchEngines: SearchEngineStore
 
     init(
         preferences: Preferences = Preferences(),
@@ -19,7 +20,8 @@ final class AppServices {
         history: HistoryStore = HistoryStore(),
         bookmarks: BookmarkStore = BookmarkStore(),
         siteSettings: SiteSettingsStore = SiteSettingsStore(),
-        favicons: FaviconStore = FaviconStore()
+        favicons: FaviconStore = FaviconStore(),
+        searchEngines: SearchEngineStore? = nil
     ) {
         self.preferences = preferences
         self.privateSession = privateSession
@@ -28,5 +30,6 @@ final class AppServices {
         self.bookmarks = bookmarks
         self.siteSettings = siteSettings
         self.favicons = favicons
+        self.searchEngines = searchEngines ?? SearchEngineStore(preferences: preferences)
     }
 }

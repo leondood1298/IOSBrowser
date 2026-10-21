@@ -182,6 +182,13 @@ final class BrowserViewController: UIViewController {
         addressField.onPageSettings = { [weak self] source in self?.showPageSettings(from: source) }
         addressField.onShield = { [weak self] source in self?.showShield(from: source) }
         addressField.onTextChange = { [weak self] text in self?.showSuggestions(for: text) }
+        addressField.editingTextProvider = { [weak self] url in
+            guard let self, let url else { return nil }
+            return self.services.searchEngines.defaultEngine.searchTerms(in: url)
+        }
+        addressField.completionProvider = { [weak self] typed in
+            self?.domainCompletion().completion(for: typed)
+        }
         addressField.onEditingEnded = { [weak self] in self?.hideSuggestions() }
         tabStrip.onSelect = { [weak self] tab in self?.model.select(tab) }
         tabStrip.onClose = { [weak self] tab in self?.model.close(tab) }
@@ -310,13 +317,39 @@ final class BrowserViewController: UIViewController {
 
     // MARK: - Suggestions
 
+    private lazy var topDomains: [String] = {
+        guard let url = Bundle.main.url(forResource: "topdomains", withExtension: "txt"),
+              let text = try? String(contentsOf: url, encoding: .utf8)
+        else { return [] }
+        return text.split(whereSeparator: \.isNewline).map(String.init)
+    }()
+
+    private func domainCompletion() -> DomainCompletion {
+        let preferences = services.preferences
+        return DomainCompletion(
+            topDomains: topDomains, customDomains: preferences.customAutocompleteDomains,
+            usesTopDomains: preferences.autocompleteTopSites, usesCustomDomains: preferences.autocompleteCustomSites)
+    }
+
     private func showSuggestions(for text: String) {
+        suggestions.onChange = { [weak self] in self?.updateSuggestionsPanel() }
         suggestions.update(query: text)
-        let hasContent = !suggestions.results.isEmpty || suggestions.canPaste
-        if suggestionsHost == nil && hasContent {
+        updateSuggestionsPanel()
+    }
+
+    /// Shows the suggestions panel while there's something in it. Search suggestions arrive from
+    /// the network after typing, so this also runs when they come in.
+    private func updateSuggestionsPanel() {
+        let hasContent = suggestions.hasContent
+        if suggestionsHost == nil && hasContent && addressField.isEditing {
             let host = UIHostingController(rootView: SuggestionsView(
-                model: suggestions, favicons: services.favicons,
+                model: suggestions, favicons: services.favicons, preferences: services.preferences,
                 onSelect: { [weak self] suggestion in self?.choose(suggestion) },
+                onSearch: { [weak self] query in
+                    self?.addressField.resignFirstResponder()
+                    self?.model.open(input: query)
+                },
+                onFindInPage: { [weak self] query in self?.find(query) },
                 onPasteAndGo: { [weak self] in self?.pasteAndGo() }))
             addChild(host)
             host.view.translatesAutoresizingMaskIntoConstraints = false
@@ -328,9 +361,19 @@ final class BrowserViewController: UIViewController {
                 host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             ])
             host.didMove(toParent: self)
+            // VoiceOver (and UI tests) should only see the suggestions, not the page under them.
+            host.view.accessibilityViewIsModal = true
             suggestionsHost = host
         }
         suggestionsHost?.view.isHidden = !hasContent
+    }
+
+    /// Opens Find on Page with `query` already filled in.
+    private func find(_ query: String) {
+        addressField.resignFirstResponder()
+        guard let interaction = displayedWebView?.findInteraction else { return }
+        interaction.searchText = query
+        interaction.presentFindNavigator(showingReplace: false)
     }
 
     private func hideSuggestions() {
@@ -689,7 +732,7 @@ final class BrowserViewController: UIViewController {
         case "open-text": input = items.first { $0.name == "text" }?.value
         default: input = nil
         }
-        guard let input, let target = BrowserWindowModel.url(for: input, engine: services.preferences.searchEngine)
+        guard let input, let target = BrowserWindowModel.url(for: input, engine: services.searchEngines.defaultEngine)
         else { return }
         model.newTab(url: target, isPrivate: wantsPrivate)
     }
