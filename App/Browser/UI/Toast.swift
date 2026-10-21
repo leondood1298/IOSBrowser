@@ -47,11 +47,14 @@ enum Toast {
 
         UIView.animate(withDuration: 0.2) {
             container.alpha = 1
-        } completion: { _ in
-            UIView.animate(withDuration: 0.3, delay: 1.8) {
-                container.alpha = 0
+        }
+        // A timer rather than a delayed animation: an animation waiting to start keeps the app
+        // "busy", and UI tests (which wait for quiet) would only look after the toast is gone.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak container] in
+            UIView.animate(withDuration: 0.3) {
+                container?.alpha = 0
             } completion: { _ in
-                container.removeFromSuperview()
+                container?.removeFromSuperview()
             }
         }
     }
