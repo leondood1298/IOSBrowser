@@ -217,14 +217,18 @@ final class TabModel: NSObject, ObservableObject, Identifiable {
 
     // MARK: - Snapshots
 
-    func captureSnapshot() {
-        guard let webView, webView.window != nil, !showsStartPage else { return }
+    func captureSnapshot(completion: (() -> Void)? = nil) {
+        guard let webView, webView.window != nil, !showsStartPage else {
+            completion?()
+            return
+        }
         let configuration = WKSnapshotConfiguration()
         configuration.snapshotWidth = NSNumber(value: 480)
         webView.takeSnapshot(with: configuration) { [weak self] image, _ in
             if let image {
                 self?.snapshot = image
             }
+            completion?()
         }
     }
 

@@ -172,6 +172,7 @@ final class BrowserViewController: UIViewController {
             }
             .store(in: &tabObservers)
 
+        addressField.showTab(url: tab.url)
         tab.$url.combineLatest(tab.$hasOnlySecureContent, tab.$isLoading)
             .receive(on: RunLoop.main)
             .sink { [weak self] url, secure, loading in
@@ -252,7 +253,9 @@ final class BrowserViewController: UIViewController {
 
     func openNewTab(isPrivate: Bool?) {
         model.newTab(isPrivate: isPrivate)
-        addressField.beginEditingAddress()
+        DispatchQueue.main.async { [weak self] in
+            self?.addressField.beginEditingAddress()
+        }
     }
 
     func focusAddressField() {
@@ -260,9 +263,16 @@ final class BrowserViewController: UIViewController {
     }
 
     func showTabOverview() {
-        model.selectedTab?.captureSnapshot()
-        let overview = TabOverviewViewController(model: model)
-        present(overview, animated: true)
+        guard presentedViewController == nil else { return }
+        let presentOverview = { [weak self] in
+            guard let self, self.presentedViewController == nil else { return }
+            self.present(TabOverviewViewController(model: self.model), animated: true)
+        }
+        if let tab = model.selectedTab {
+            tab.captureSnapshot(completion: presentOverview)
+        } else {
+            presentOverview()
+        }
     }
 
     private func showDiagnostics() {

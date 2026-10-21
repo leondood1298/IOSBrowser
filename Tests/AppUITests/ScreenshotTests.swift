@@ -13,6 +13,7 @@ final class ScreenshotTests: XCTestCase {
     @MainActor
     func testTabsFlow() throws {
         app = XCUIApplication()
+        app.launchArguments = ["--reset-state"]
         app.launch()
 
         let field = app.textFields["urlField"]
@@ -42,6 +43,7 @@ final class ScreenshotTests: XCTestCase {
     @MainActor
     func testDialogsAndPopups() throws {
         app = XCUIApplication()
+        app.launchArguments = ["--reset-state"]
         app.launch()
         XCTAssertTrue(app.textFields["urlField"].waitForExistence(timeout: 20))
 

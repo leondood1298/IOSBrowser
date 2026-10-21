@@ -74,6 +74,17 @@ final class AddressField: UITextField {
         refresh()
     }
 
+    /// Called when the window switches tabs. If the field is being edited, its text is replaced
+    /// with the new tab's address so it never shows the previous tab's URL.
+    func showTab(url: URL?) {
+        currentURL = url
+        if isEditing {
+            text = URLDisplay.editableText(for: url)
+            selectAll(nil)
+        }
+        refresh()
+    }
+
     /// Puts the cursor in the field with the full address selected.
     func beginEditingAddress() {
         becomeFirstResponder()

@@ -6,6 +6,10 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
+        // UI tests launch with --reset-state so saved tabs from earlier runs don't leak in.
+        if ProcessInfo.processInfo.arguments.contains("--reset-state") {
+            AppFolders.eraseSavedState()
+        }
         AppFolders.ensureDefaultFolders()
         Diagnostics.shared.start()
         _ = AppServices.shared

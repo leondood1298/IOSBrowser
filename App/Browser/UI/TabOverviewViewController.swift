@@ -14,7 +14,7 @@ final class TabOverviewViewController: UIViewController {
         self.model = model
         showingPrivate = model.isPrivate
         super.init(nibName: nil, bundle: nil)
-        modalPresentationStyle = .fullScreen
+        modalPresentationStyle = .overFullScreen
         modalTransitionStyle = .crossDissolve
     }
 
@@ -30,6 +30,7 @@ final class TabOverviewViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemGroupedBackground
+        view.isOpaque = true
 
         modeControl.selectedSegmentIndex = showingPrivate ? 1 : 0
         modeControl.accessibilityIdentifier = "tabModeControl"
@@ -178,6 +179,10 @@ final class TabCardCell: UICollectionViewCell {
         header.alignment = .center
         header.isLayoutMarginsRelativeArrangement = true
         header.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 6)
+        header.setContentHuggingPriority(.required, for: .vertical)
+        header.setContentCompressionResistancePriority(.required, for: .vertical)
+        imageView.setContentHuggingPriority(.defaultLow, for: .vertical)
+        imageView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         let stack = UIStackView(arrangedSubviews: [header, imageView])
         stack.axis = .vertical
         stack.translatesAutoresizingMaskIntoConstraints = false
