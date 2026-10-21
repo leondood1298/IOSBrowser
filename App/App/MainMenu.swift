@@ -16,6 +16,10 @@ enum MainMenu {
             command("Open Location…", #selector(BrowserViewController.openLocationCommand(_:)), "l"),
             command("Close Tab", #selector(BrowserViewController.closeTabCommand(_:)), "w"),
         ]), atStartOfMenu: .file)
+        builder.insertChild(UIMenu(options: .displayInline, children: [
+            command("Erase / Clear Browsing Data…", #selector(BrowserViewController.eraseCommand(_:)),
+                    UIKeyCommand.inputDelete, [.command, .shift]),
+        ]), atEndOfMenu: .file)
 
         builder.insertChild(UIMenu(options: .displayInline, children: [
             command("Reload Page", #selector(BrowserViewController.reloadCommand(_:)), "r"),

@@ -17,6 +17,7 @@ extension TabModel: WKNavigationDelegate {
         case .load:
             guard isMainFrame else { return (allowPolicy(for: navigationAction), preferences) }
             preferences.preferredContentMode = contentMode(for: url)
+            preferences.allowsContentJavaScript = !AppServices.shared.preferences.blockJavaScript
             // Each site can have its own user agent. It must be set before the request goes out,
             // so a mismatch re-issues the request with the right one (not for back/forward).
             let agent = effectiveUserAgent(for: url)

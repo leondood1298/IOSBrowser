@@ -27,6 +27,23 @@ nonisolated enum AppTheme: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// When Face ID (or the passcode) is required.
+nonisolated enum AppLockMode: String, CaseIterable, Identifiable, Sendable {
+    case off
+    case wholeApp
+    case privateTabs
+
+    var id: String { rawValue }
+
+    var name: String {
+        switch self {
+        case .off: return "Off"
+        case .wholeApp: return "Whole App"
+        case .privateTabs: return "Private Tabs Only"
+        }
+    }
+}
+
 /// User settings stored in UserDefaults. Changes publish through `objectWillChange`.
 final class Preferences: ObservableObject {
     private let defaults: UserDefaults
@@ -41,7 +58,18 @@ final class Preferences: ObservableObject {
             Key.defaultUserAgent: UserAgent.standard.rawValue,
             Key.theme: AppTheme.system.rawValue,
             Key.defaultLayout: SiteLayout.desktop.rawValue,
+            Key.trackingProtection: true,
+            Key.blockedCategories: [TrackerCategory.advertising, .analytics, .social].map(\.rawValue),
+            Key.blockWebFonts: false,
+            Key.blockJavaScript: false,
+            Key.blockPopups: true,
+            Key.upgradeToHTTPS: true,
+            Key.fraudWarnings: true,
+            Key.appLock: AppLockMode.off.rawValue,
         ])
+        if defaults.object(forKey: Key.installDate) == nil {
+            defaults.set(Date(), forKey: Key.installDate)
+        }
     }
 
     private enum Key {
@@ -53,6 +81,83 @@ final class Preferences: ObservableObject {
         static let customUserAgent = "customUserAgent"
         static let theme = "theme"
         static let defaultLayout = "defaultLayout"
+        static let trackingProtection = "trackingProtection"
+        static let blockedCategories = "blockedTrackerCategories"
+        static let blockWebFonts = "blockWebFonts"
+        static let blockJavaScript = "blockJavaScript"
+        static let blockPopups = "blockPopups"
+        static let upgradeToHTTPS = "upgradeToHTTPS"
+        static let fraudWarnings = "fraudWarnings"
+        static let appLock = "appLock"
+        static let lifetimeTrackers = "lifetimeTrackersBlocked"
+        static let installDate = "installDate"
+    }
+
+    // MARK: Privacy
+
+    /// Firefox Focus's "Enhanced Tracking Protection" master switch.
+    var trackingProtectionEnabled: Bool {
+        get { defaults.bool(forKey: Key.trackingProtection) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.trackingProtection) }
+    }
+
+    func isBlocking(_ category: TrackerCategory) -> Bool {
+        (defaults.stringArray(forKey: Key.blockedCategories) ?? []).contains(category.rawValue)
+    }
+
+    func setBlocking(_ category: TrackerCategory, _ blocked: Bool) {
+        objectWillChange.send()
+        var categories = Set(defaults.stringArray(forKey: Key.blockedCategories) ?? [])
+        if blocked {
+            categories.insert(category.rawValue)
+        } else {
+            categories.remove(category.rawValue)
+        }
+        defaults.set(categories.sorted(), forKey: Key.blockedCategories)
+    }
+
+    var blockWebFonts: Bool {
+        get { defaults.bool(forKey: Key.blockWebFonts) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.blockWebFonts) }
+    }
+
+    var blockJavaScript: Bool {
+        get { defaults.bool(forKey: Key.blockJavaScript) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.blockJavaScript) }
+    }
+
+    var blockPopups: Bool {
+        get { defaults.bool(forKey: Key.blockPopups) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.blockPopups) }
+    }
+
+    var upgradeToHTTPS: Bool {
+        get { defaults.bool(forKey: Key.upgradeToHTTPS) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.upgradeToHTTPS) }
+    }
+
+    var fraudWarnings: Bool {
+        get { defaults.bool(forKey: Key.fraudWarnings) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.fraudWarnings) }
+    }
+
+    var appLock: AppLockMode {
+        get { AppLockMode(rawValue: defaults.string(forKey: Key.appLock) ?? "") ?? .off }
+        set { objectWillChange.send(); defaults.set(newValue.rawValue, forKey: Key.appLock) }
+    }
+
+    /// Trackers blocked since the app was installed (survives Erase, like Focus's counter).
+    var lifetimeTrackersBlocked: Int {
+        defaults.integer(forKey: Key.lifetimeTrackers)
+    }
+
+    func addBlockedTrackers(_ count: Int) {
+        guard count > 0 else { return }
+        defaults.set(defaults.integer(forKey: Key.lifetimeTrackers) + count, forKey: Key.lifetimeTrackers)
+    }
+
+    var installDate: Date {
+        defaults.object(forKey: Key.installDate) as? Date ?? Date()
     }
 
     var theme: AppTheme {

@@ -44,6 +44,10 @@ final class TabStore: ObservableObject {
         windows.add(window)
     }
 
+    var windowModels: [BrowserWindowModel] {
+        windows.allObjects
+    }
+
     /// The window currently showing `group`, if any.
     func window(showing group: TabGroup) -> BrowserWindowModel? {
         windows.allObjects.first { $0.normalGroup === group }

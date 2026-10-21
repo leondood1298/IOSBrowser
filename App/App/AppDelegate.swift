@@ -13,6 +13,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         AppFolders.ensureDefaultFolders()
         Diagnostics.shared.start()
         _ = AppServices.shared
+        ContentBlocker.shared.start()
         return true
     }
 

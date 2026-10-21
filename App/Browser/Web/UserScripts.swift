@@ -13,6 +13,11 @@ enum UserScripts {
         controller.addUserScript(script("ContextMenuHelper", mainFrameOnly: true))
         controller.addUserScript(script("MediaState", mainFrameOnly: false))
         controller.add(ScriptMessageRouter.shared, contentWorld: world, name: ScriptMessageRouter.mediaHandler)
+        // Tracker reporting must see the page's own XHR, fetch and image calls, so it runs in the page world.
+        controller.addUserScript(WKUserScript(
+            source: source(named: "TrackingProtection"), injectionTime: .atDocumentStart,
+            forMainFrameOnly: false, in: .page))
+        controller.add(ScriptMessageRouter.shared, contentWorld: .page, name: ScriptMessageRouter.trackersHandler)
     }
 
     private static func script(_ name: String, mainFrameOnly: Bool) -> WKUserScript {
@@ -51,6 +56,7 @@ enum UserScripts {
 final class ScriptMessageRouter: NSObject, WKScriptMessageHandler {
     static let shared = ScriptMessageRouter()
     static let mediaHandler = "browserMedia"
+    static let trackersHandler = "browserTrackers"
 
     private let installed = NSHashTable<WKUserContentController>.weakObjects()
     private let owners = NSMapTable<WKWebView, TabModel>.weakToWeakObjects()

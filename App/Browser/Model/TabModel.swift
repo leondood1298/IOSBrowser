@@ -35,6 +35,8 @@ final class TabModel: NSObject, ObservableObject, Identifiable {
     /// True while the page plays media with sound (or would, if the tab weren't muted).
     @Published private(set) var isPlayingAudio = false
     @Published private(set) var isMuted = false
+    /// Trackers blocked on the current page, by category.
+    @Published private(set) var trackerCounts = TrackerCounts()
 
     private(set) var webView: WKWebView?
     private(set) var lastActive: Date
@@ -102,13 +104,17 @@ final class TabModel: NSObject, ObservableObject, Identifiable {
         let configuration = WebViewFactory.makeConfiguration(isPrivate: isPrivate)
         let webView = WebViewFactory.makeWebView(configuration: configuration)
         attach(webView)
-        if let state = pendingInteractionState {
-            webView.interactionState = state
-        } else if let url = pendingURL {
-            webView.load(URLRequest(url: url))
+        // The first page waits until tracker blocking is in place.
+        ContentBlocker.shared.whenReady { [weak self, weak webView] in
+            guard let self, let webView, self.webView === webView else { return }
+            if let state = self.pendingInteractionState {
+                webView.interactionState = state
+            } else if let url = self.pendingURL {
+                webView.load(URLRequest(url: url))
+            }
+            self.pendingInteractionState = nil
+            self.pendingURL = nil
         }
-        pendingInteractionState = nil
-        pendingURL = nil
         return webView
     }
 
@@ -141,6 +147,11 @@ final class TabModel: NSObject, ObservableObject, Identifiable {
         webView.uiDelegate = self
         UserScripts.install(in: webView.configuration.userContentController)
         ScriptMessageRouter.shared.register(self, for: webView)
+        ContentBlocker.shared.whenReady { [weak webView] in
+            if let webView {
+                ContentBlocker.shared.apply(to: webView.configuration.userContentController)
+            }
+        }
         webView.customUserAgent = effectiveUserAgent(for: pendingURL ?? url)
         observe(webView)
     }
@@ -193,7 +204,10 @@ final class TabModel: NSObject, ObservableObject, Identifiable {
     func load(_ url: URL) {
         showsStartPage = false
         self.url = url
-        makeWebViewIfNeeded().load(URLRequest(url: url))
+        let webView = makeWebViewIfNeeded()
+        ContentBlocker.shared.whenReady { [weak webView] in
+            webView?.load(URLRequest(url: url))
+        }
     }
 
     func goBack() {
@@ -287,6 +301,10 @@ final class TabModel: NSObject, ObservableObject, Identifiable {
     // MARK: - Media
 
     func handleScriptMessage(name: String, body: Any) {
+        if name == ScriptMessageRouter.trackersHandler {
+            countTracker(body)
+            return
+        }
         guard name == ScriptMessageRouter.mediaHandler, let info = body as? [String: Any],
               let frame = info["frame"] as? String
         else { return }
@@ -308,8 +326,20 @@ final class TabModel: NSObject, ObservableObject, Identifiable {
             completionHandler: nil)
     }
 
-    /// A new page started: forget the old page's media.
+    /// Counts a request the page made if it's a tracker that's being blocked here.
+    private func countTracker(_ body: Any) {
+        guard let info = body as? [String: Any], let address = info["url"] as? String,
+              let resource = URL(string: address), let matcher = ContentBlocker.shared.matcher,
+              let category = matcher.category(for: resource, on: url),
+              ContentBlocker.shared.isBlocking(category, on: url)
+        else { return }
+        trackerCounts.add(category)
+        AppServices.shared.preferences.addBlockedTrackers(1)
+    }
+
+    /// A new page started: forget the old page's media and tracker counts.
     func resetMediaState() {
+        trackerCounts = TrackerCounts()
         mediaFrames.removeAll()
         if isPlayingAudio {
             isPlayingAudio = false

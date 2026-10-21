@@ -8,12 +8,14 @@ final class AddressField: UITextField {
     var onSubmit: ((String) -> Void)?
     var onReloadOrStop: (() -> Void)?
     var onPageSettings: ((UIView) -> Void)?
+    var onShield: ((UIView) -> Void)?
     /// Called with the text whenever editing starts or the text changes.
     var onTextChange: ((String) -> Void)?
     var onEditingEnded: (() -> Void)?
     var onPasteAndGo: ((String) -> Void)?
 
     private let lockView = UIImageView(image: UIImage(systemName: "lock.fill"))
+    private let shieldButton = UIButton(type: .system)
     private let pageSettingsButton = UIButton(type: .system)
     private let reloadButton = UIButton(type: .system)
     private var currentURL: URL?
@@ -62,9 +64,19 @@ final class AddressField: UITextField {
         lockView.tintColor = .secondaryLabel
         lockView.contentMode = .center
         lockView.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .caption2)
-        let leading = UIStackView(arrangedSubviews: [pageSettingsButton, lockView])
-        leading.spacing = 2
-        leading.frame = CGRect(x: 0, y: 0, width: 58, height: 30)
+        shieldButton.setImage(UIImage(systemName: "shield.lefthalf.filled"), for: .normal)
+        shieldButton.tintColor = .label
+        shieldButton.accessibilityLabel = "Tracking Protection"
+        shieldButton.accessibilityIdentifier = "shieldButton"
+        shieldButton.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.onShield?(self.shieldButton)
+        }, for: .touchUpInside)
+        lockView.isHidden = true
+        let leading = UIStackView(arrangedSubviews: [shieldButton, pageSettingsButton])
+        leading.spacing = 0
+        leading.frame = CGRect(x: 0, y: 0, width: 76, height: 30)
+        shieldButton.widthAnchor.constraint(equalToConstant: 38).isActive = true
         pageSettingsButton.widthAnchor.constraint(equalToConstant: 38).isActive = true
         leftView = leading
         leftViewMode = .unlessEditing
@@ -105,6 +117,14 @@ final class AddressField: UITextField {
         refresh()
     }
 
+    /// Shows the tracking protection state: on, off for this page, or an insecure connection.
+    func updateShield(protected: Bool, secure: Bool) {
+        let symbol = !secure ? "exclamationmark.shield" : (protected ? "shield.lefthalf.filled" : "shield.slash")
+        shieldButton.setImage(UIImage(systemName: symbol), for: .normal)
+        shieldButton.tintColor = secure ? .label : .systemOrange
+        shieldButton.accessibilityValue = !secure ? "Connection not secure" : (protected ? "On" : "Off")
+    }
+
     /// Puts the cursor in the field with the full address selected.
     func beginEditingAddress() {
         becomeFirstResponder()
@@ -116,7 +136,7 @@ final class AddressField: UITextField {
         reloadButton.accessibilityLabel = isLoadingPage ? "Stop" : "Reload"
         reloadButton.isHidden = !showingPage
         pageSettingsButton.isHidden = !showingPage
-        lockView.isHidden = !(showingPage && isSecurePage)
+        shieldButton.isHidden = !showingPage
         guard !isEditing else { return }
         text = URLDisplay.host(for: currentURL)
         textAlignment = .center

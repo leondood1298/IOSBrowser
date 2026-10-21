@@ -4,15 +4,37 @@ import SwiftUI
 /// The Settings screen. Later milestones add Privacy, Search and Downloads sections.
 struct SettingsView: View {
     @ObservedObject var preferences: Preferences
+    @ObservedObject var sites: SiteSettingsStore
+    var onClearData: () -> Void
     var onDone: () -> Void
+
+    @State private var confirmingContent = false
+
+    init(preferences: Preferences, sites: SiteSettingsStore, onClearData: @escaping () -> Void, onDone: @escaping () -> Void) {
+        self.preferences = preferences
+        self.sites = sites
+        self.onClearData = onClearData
+        self.onDone = onDone
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 generalSection
+                privacySection
+                securitySection
                 linksSection
                 searchSection
                 aboutSection
+            }
+            .alert("Block Other Content Trackers?", isPresented: $confirmingContent) {
+                Button("Cancel", role: .cancel) {}
+                Button("Block") {
+                    preferences.setBlocking(.content, true)
+                    ContentBlocker.shared.settingsChanged()
+                }
+            } message: {
+                Text("Blocking other content trackers may break some videos and web pages.")
             }
             .navigationTitle("Settings")
             .toolbar {
@@ -51,6 +73,58 @@ struct SettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             }
+        }
+    }
+
+    private var privacySection: some View {
+        Section {
+            Toggle("Enhanced Tracking Protection", isOn: Binding(get: { preferences.trackingProtectionEnabled }, set: { value in
+                preferences.trackingProtectionEnabled = value
+                ContentBlocker.shared.settingsChanged()
+            }))
+            if preferences.trackingProtectionEnabled {
+                ForEach(TrackerCategory.allCases) { category in
+                    Toggle(category.name, isOn: Binding(get: { preferences.isBlocking(category) }, set: { value in
+                        if category == .content && value {
+                            confirmingContent = true
+                        } else {
+                            preferences.setBlocking(category, value)
+                            ContentBlocker.shared.settingsChanged()
+                        }
+                    }))
+                    .padding(.leading, 12)
+                }
+            }
+            Toggle("Block Web Fonts", isOn: Binding(get: { preferences.blockWebFonts }, set: { value in
+                preferences.blockWebFonts = value
+                ContentBlocker.shared.settingsChanged()
+            }))
+            NavigationLink("Sites Without Protection") {
+                ExceptionListView(sites: sites)
+            }
+            Button("Clear Browsing Data…", action: onClearData)
+        } header: {
+            Text("Privacy")
+        } footer: {
+            Text("\(preferences.lifetimeTrackersBlocked.formatted()) trackers blocked since \(preferences.installDate.formatted(date: .abbreviated, time: .omitted)).")
+        }
+    }
+
+    private var securitySection: some View {
+        Section {
+            Picker("Lock with Face ID", selection: binding(\.appLock)) {
+                ForEach(AppLockMode.allCases) { mode in
+                    Text(mode.name).tag(mode)
+                }
+            }
+            Toggle("Block JavaScript", isOn: binding(\.blockJavaScript))
+            Toggle("Block Pop-ups", isOn: binding(\.blockPopups))
+            Toggle("Upgrade Connections to HTTPS", isOn: binding(\.upgradeToHTTPS))
+            Toggle("Fraudulent Website Warning", isOn: binding(\.fraudWarnings))
+        } header: {
+            Text("Security")
+        } footer: {
+            Text("Pop-up, HTTPS and fraud settings apply to tabs opened after the change.")
         }
     }
 
@@ -103,4 +177,30 @@ struct SettingsView: View {
 
         Full notices are in THIRD_PARTY_NOTICES.md in the project repository.
         """
+}
+
+/// Sites where tracking protection is switched off, with swipe to turn it back on.
+struct ExceptionListView: View {
+    @ObservedObject var sites: SiteSettingsStore
+
+    var body: some View {
+        let domains = sites.index.sites.filter { $0.value.trackingProtectionDisabled == true }.map(\.key).sorted()
+        List {
+            if domains.isEmpty {
+                Text("Tracking protection is on for every site. Turn it off for a site from the shield in the address bar.")
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(domains, id: \.self) { domain in
+                Text(domain)
+                    .swipeActions {
+                        Button("Protect") {
+                            sites.update(URL(string: "https://\(domain)")) { $0.trackingProtectionDisabled = nil }
+                            ContentBlocker.shared.settingsChanged()
+                        }
+                        .tint(.blue)
+                    }
+            }
+        }
+        .navigationTitle("Sites Without Protection")
+    }
 }

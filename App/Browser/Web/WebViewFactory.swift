@@ -14,12 +14,13 @@ enum WebViewFactory {
         configuration.allowsAirPlayForMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = .audio
         configuration.ignoresViewportScaleLimits = true
-        configuration.upgradeKnownHostsToHTTPS = true
+        let settings = AppServices.shared.preferences
+        configuration.upgradeKnownHostsToHTTPS = settings.upgradeToHTTPS
         configuration.defaultWebpagePreferences.preferredContentMode = .recommended
 
         let preferences = configuration.preferences
-        preferences.javaScriptCanOpenWindowsAutomatically = false  // pop-up blocker
-        preferences.isFraudulentWebsiteWarningEnabled = true
+        preferences.javaScriptCanOpenWindowsAutomatically = !settings.blockPopups
+        preferences.isFraudulentWebsiteWarningEnabled = settings.fraudWarnings
         preferences.isElementFullscreenEnabled = true
         return configuration
     }

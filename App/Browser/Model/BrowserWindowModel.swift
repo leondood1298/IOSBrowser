@@ -289,6 +289,11 @@ final class BrowserWindowModel: ObservableObject {
         select(tab)
     }
 
+    /// Forgets closed normal tabs (Clear Browsing Data).
+    func clearRecentlyClosed() {
+        recentlyClosed.removeAll { !$0.isPrivate }
+    }
+
     func reopenLastClosedTab() {
         if let last = recentlyClosed.first {
             reopen(last)

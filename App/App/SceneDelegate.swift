@@ -4,6 +4,7 @@ import UIKit
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
     private var root: BrowserSplitViewController?
+    private var cover: PrivacyCover?
 
     private static let groupIDKey = "normalGroupID"
     private static let activeGroupIDKey = "activeGroupID"
@@ -45,6 +46,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.window = window
         self.root = root
         applyTheme()
+        let cover = PrivacyCover(scene: windowScene, model: model)
+        self.cover = cover
+        cover.showIfLocked()
         AppServices.shared.preferences.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.applyTheme() }
@@ -78,7 +82,16 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window?.overrideUserInterfaceStyle = AppServices.shared.preferences.theme.interfaceStyle
     }
 
+    func sceneWillResignActive(_ scene: UIScene) {
+        cover?.sceneWillResignActive()
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        cover?.sceneDidBecomeActive()
+    }
+
     func sceneDidEnterBackground(_ scene: UIScene) {
+        cover?.sceneDidEnterBackground()
         AppServices.shared.tabStore.saveNow()
     }
 }

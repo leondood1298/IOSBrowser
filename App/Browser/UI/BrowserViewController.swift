@@ -31,6 +31,9 @@ final class BrowserViewController: UIViewController {
     private lazy var tabsButton = barButton("square.on.square", label: "Show All Tabs", id: "tabOverviewButton") { [weak self] in
         self?.showTabOverview()
     }
+    private lazy var eraseButton: UIBarButtonItem = barButton("trash", label: "Erase", id: "eraseButton") { [weak self] in
+        self?.erasePrivateBrowsing()
+    }
     private lazy var shareButton: UIBarButtonItem = barButton("square.and.arrow.up", label: "Share", id: "shareButton") { [weak self] in
         guard let self, let tab = self.model.selectedTab, !tab.showsStartPage else { return }
         PageActions.share(tab, from: self, source: self.shareButton)
@@ -119,9 +122,10 @@ final class BrowserViewController: UIViewController {
         navigationItem.titleView = addressField
         navigationItem.leftItemsSupplementBackButton = true
         let compact = traitCollection.horizontalSizeClass == .compact
+        let erase: [UIBarButtonItem] = model.isPrivate ? [eraseButton] : []
         if compact {
             navigationItem.leftBarButtonItems = []
-            navigationItem.rightBarButtonItems = [moreButton]
+            navigationItem.rightBarButtonItems = [moreButton] + erase
             toolbarItems = [
                 backButton, .flexibleSpace(), forwardButton, .flexibleSpace(), shareButton, .flexibleSpace(),
                 newTabButton, .flexibleSpace(), tabsButton,
@@ -129,7 +133,7 @@ final class BrowserViewController: UIViewController {
         } else {
             toolbarItems = []
             navigationItem.leftBarButtonItems = [backButton, forwardButton]
-            navigationItem.rightBarButtonItems = [moreButton, tabsButton, newTabButton, shareButton]
+            navigationItem.rightBarButtonItems = [moreButton, tabsButton, newTabButton, shareButton] + erase
         }
         navigationController?.setToolbarHidden(!compact, animated: false)
         tabStripHeight?.constant = compact ? 0 : 38
@@ -176,6 +180,7 @@ final class BrowserViewController: UIViewController {
             if tab.isLoading { tab.stopLoading() } else { tab.reload() }
         }
         addressField.onPageSettings = { [weak self] source in self?.showPageSettings(from: source) }
+        addressField.onShield = { [weak self] source in self?.showShield(from: source) }
         addressField.onTextChange = { [weak self] text in self?.showSuggestions(for: text) }
         addressField.onEditingEnded = { [weak self] in self?.hideSuggestions() }
         tabStrip.onSelect = { [weak self] tab in self?.model.select(tab) }
@@ -222,6 +227,7 @@ final class BrowserViewController: UIViewController {
             .receive(on: RunLoop.main)
             .sink { [weak self] url, secure, loading in
                 self?.addressField.update(url: url, isSecure: secure, isLoading: loading)
+                self?.refreshShield()
             }
             .store(in: &tabObservers)
         tab.$canGoBack.combineLatest(tab.$canGoForward)
@@ -299,6 +305,7 @@ final class BrowserViewController: UIViewController {
         navigationController?.overrideUserInterfaceStyle = isPrivate ? .dark : .unspecified
         overrideUserInterfaceStyle = isPrivate ? .dark : .unspecified
         addressField.placeholder = isPrivate ? "Search or enter address (Private)" : "Search or enter address"
+        applyWidthLayout()
     }
 
     // MARK: - Suggestions
@@ -470,9 +477,18 @@ final class BrowserViewController: UIViewController {
                 self?.showLibrary(.history)
             },
         ]))
-        sections.append(UIAction(title: "Settings", image: UIImage(systemName: "gear")) { [weak self] _ in
-            self?.showSettings()
-        })
+        sections.append(UIMenu(options: .displayInline, children: [
+            model.isPrivate
+                ? UIAction(title: "Erase Private Browsing", image: UIImage(systemName: "trash"), attributes: .destructive) {
+                    [weak self] _ in self?.erasePrivateBrowsing()
+                }
+                : UIAction(title: "Clear Browsing Data…", image: UIImage(systemName: "trash")) { [weak self] _ in
+                    self?.showClearBrowsingData()
+                },
+            UIAction(title: "Settings", image: UIImage(systemName: "gear")) { [weak self] _ in
+                self?.showSettings()
+            },
+        ]))
         return sections
     }
 
@@ -520,6 +536,72 @@ final class BrowserViewController: UIViewController {
         host.popoverPresentationController?.sourceView = source
         host.popoverPresentationController?.sourceRect = source.bounds
         host.popoverPresentationController?.permittedArrowDirections = [.up]
+        present(host, animated: true)
+    }
+
+    private func refreshShield() {
+        guard let tab = model.selectedTab else { return }
+        let protected = services.preferences.trackingProtectionEnabled
+            && services.siteSettings.settings(for: tab.url).trackingProtectionDisabled != true
+        addressField.updateShield(protected: protected, secure: tab.hasOnlySecureContent || tab.url?.scheme != "http")
+    }
+
+    private func showShield(from source: UIView) {
+        guard let tab = model.selectedTab, presentedViewController == nil else { return }
+        let shield = ShieldView(tab: tab, services: services) { [weak self] in
+            ContentBlocker.shared.settingsChanged()
+            self?.refreshShield()
+        }
+        let host = UIHostingController(rootView: shield)
+        host.sizingOptions = .preferredContentSize
+        host.modalPresentationStyle = .popover
+        host.popoverPresentationController?.sourceView = source
+        host.popoverPresentationController?.sourceRect = source.bounds
+        host.popoverPresentationController?.permittedArrowDirections = [.up]
+        present(host, animated: true)
+    }
+
+    /// Firefox Focus's Erase: closes private tabs everywhere, drops the private data store, then
+    /// shows a fresh private tab. The old screen slides away as it fades.
+    func erasePrivateBrowsing() {
+        guard let window = view.window else { return }
+        let snapshot = window.snapshotView(afterScreenUpdates: false)
+        if let snapshot {
+            window.addSubview(snapshot)
+        }
+        EraseService.erasePrivateBrowsing(services: services)
+        model.newTab(isPrivate: true)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        if let snapshot {
+            UIView.animate(withDuration: 0.25, delay: 0, options: .curveEaseIn) {
+                snapshot.transform = CGAffineTransform(translationX: 0, y: window.bounds.height * 0.3).scaledBy(x: 0.9, y: 0.9)
+                snapshot.alpha = 0
+            } completion: { _ in
+                snapshot.removeFromSuperview()
+            }
+        }
+        Toast.show("Browsing history cleared", systemImage: "trash", in: view)
+        DispatchQueue.main.async { [weak self] in
+            self?.addressField.beginEditingAddress()
+        }
+    }
+
+    func showClearBrowsingData() {
+        guard presentedViewController == nil else { return }
+        let services = self.services
+        let clearView = ClearDataView(onClear: { [weak self] request in
+            self?.dismiss(animated: true)
+            Task {
+                await EraseService.clear(request, services: services)
+                if let self {
+                    Toast.show("Browsing data cleared", systemImage: "checkmark", in: self.view)
+                }
+            }
+        }, onCancel: { [weak self] in
+            self?.dismiss(animated: true)
+        })
+        let host = UIHostingController(rootView: clearView)
+        host.modalPresentationStyle = .formSheet
         present(host, animated: true)
     }
 
@@ -583,9 +665,15 @@ final class BrowserViewController: UIViewController {
 
     func showSettings() {
         guard presentedViewController == nil else { return }
-        let host = UIHostingController(rootView: SettingsView(preferences: services.preferences) { [weak self] in
-            self?.dismiss(animated: true)
-        })
+        let settings = SettingsView(
+            preferences: services.preferences, sites: services.siteSettings,
+            onClearData: { [weak self] in
+                self?.dismiss(animated: true) { self?.showClearBrowsingData() }
+            },
+            onDone: { [weak self] in
+                self?.dismiss(animated: true)
+            })
+        let host = UIHostingController(rootView: settings)
         host.modalPresentationStyle = .formSheet
         present(host, animated: true)
     }
@@ -710,6 +798,9 @@ extension BrowserViewController {
     @objc func zoomOutCommand(_ sender: Any?) { adjustZoom(-1) }
     @objc func actualSizeCommand(_ sender: Any?) { adjustZoom(0) }
     @objc func showSettingsCommand(_ sender: Any?) { showSettings() }
+    @objc func eraseCommand(_ sender: Any?) {
+        if model.isPrivate { erasePrivateBrowsing() } else { showClearBrowsingData() }
+    }
 
     /// ⌘1–⌘8 pick that tab, ⌘9 the last one (like Safari).
     @objc func selectTabCommand(_ sender: UICommand) {

@@ -53,6 +53,12 @@ final class FaviconStore: ObservableObject {
         }
     }
 
+    /// Forgets icons kept in memory (including ones from private tabs); cached files stay.
+    func clearMemoryCache() {
+        memory.removeAll()
+        revision += 1
+    }
+
     func removeAll() {
         memory.removeAll()
         try? FileManager.default.removeItem(at: directory)
