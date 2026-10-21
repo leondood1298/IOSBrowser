@@ -30,7 +30,7 @@ final class BrowserViewController: UIViewController {
     private lazy var tabsButton = barButton("square.on.square", label: "Show All Tabs", id: "tabOverviewButton") { [weak self] in
         self?.showTabOverview()
     }
-    private lazy var shareButton = barButton("square.and.arrow.up", label: "Share", id: "shareButton") { [weak self] in
+    private lazy var shareButton: UIBarButtonItem = barButton("square.and.arrow.up", label: "Share", id: "shareButton") { [weak self] in
         guard let self, let tab = self.model.selectedTab, !tab.showsStartPage else { return }
         PageActions.share(tab, from: self, source: self.shareButton)
     }

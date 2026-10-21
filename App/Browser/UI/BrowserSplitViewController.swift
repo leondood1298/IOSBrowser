@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 /// Lists that open in the sidebar.
-enum LibrarySection {
+nonisolated enum LibrarySection {
     case bookmarks
     case history
 }

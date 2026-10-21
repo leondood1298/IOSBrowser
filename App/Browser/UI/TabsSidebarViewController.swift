@@ -4,7 +4,7 @@ import UIKit
 /// The window's sidebar: library lists, the window's tabs and its private tabs. Later
 /// milestones add tab groups, downloads and files.
 final class TabsSidebarViewController: UIViewController {
-    private enum Section: Int, CaseIterable {
+    nonisolated private enum Section: Int, CaseIterable {
         case library
         case tabs
         case privateTabs
@@ -18,12 +18,12 @@ final class TabsSidebarViewController: UIViewController {
         }
     }
 
-    private enum Item: Hashable {
+    nonisolated private enum Item: Hashable {
         case library(LibraryItem)
         case tab(UUID)
     }
 
-    private enum LibraryItem: Hashable {
+    nonisolated private enum LibraryItem: Hashable {
         case bookmarks
         case history
 

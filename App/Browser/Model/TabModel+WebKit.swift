@@ -202,24 +202,7 @@ extension TabModel: WKUIDelegate {
 
     func webView(
         _ webView: WKWebView,
-        requestMediaCapturePermissionFor origin: WKSecurityOrigin,
-        initiatedByFrame frame: WKFrameInfo,
-        type: WKMediaCaptureType
-    ) async -> WKPermissionDecision {
-        .prompt
-    }
-
-    func webView(
-        _ webView: WKWebView,
-        requestDeviceOrientationAndMotionPermissionFor origin: WKSecurityOrigin,
-        initiatedByFrame frame: WKFrameInfo
-    ) async -> WKPermissionDecision {
-        .prompt
-    }
-
-    func webView(
-        _ webView: WKWebView,
-        contextMenuConfigurationForElement elementInfo: WKContextMenuElementInfo
+        contextMenuConfigurationFor elementInfo: WKContextMenuElementInfo
     ) async -> UIContextMenuConfiguration? {
         guard let handler = delegate else { return nil }
         let result = try? await webView.callAsyncJavaScript(
