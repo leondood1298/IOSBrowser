@@ -58,6 +58,8 @@ final class DownloadManager: NSObject, ObservableObject {
     /// Running stream (HLS) downloads, and the headers each one fetches with (see DownloadManager+Streams).
     var streamTasks: [UUID: Task<Void, Never>] = [:]
     var streamRequests: [UUID: StreamRequest] = [:]
+    private var queueCheckScheduled = false
+    private var preferenceObserver: AnyCancellable?
 
     static var defaultDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -88,6 +90,8 @@ final class DownloadManager: NSObject, ObservableObject {
         }
         sessionEngine.connect { [weak self] event in self?.handle(event) }
         Task { [weak self] in await self?.reconcileSessionDownloads() }
+        preferenceObserver = preferences.objectWillChange.sink { [weak self] _ in self?.scheduleQueueCheck() }
+        scheduleQueueCheck()
         activity.onExpire = { [weak self] in self?.pauseAllForBackground() }
         let center = NotificationCenter.default
         lifecycleObservers = [
@@ -197,6 +201,11 @@ final class DownloadManager: NSObject, ObservableObject {
             return
         }
         if item.record.sessionParts != nil {
+            guard hasFreeSlot else {
+                item.move(to: .queued) { $0.failureReason = nil }
+                save()
+                return
+            }
             guard item.move(to: .running, change: { $0.failureReason = nil }) else { return }
             startSessionParts(item)
             showInLiveActivity(item)
@@ -244,12 +253,56 @@ final class DownloadManager: NSObject, ObservableObject {
             return
         }
         item.move(to: .running)
+        startInWebKit(item, url: url)
+        save()
+    }
+
+    private func startInWebKit(_ item: DownloadItem, url: URL) {
         showInLiveActivity(item)
         helperWebView(isPrivate: item.record.isPrivate).startDownload(using: URLRequest(url: url)) { [weak self] download in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 download.delegate = self
                 self.track(download, as: item.id)
+            }
+        }
+    }
+
+    // MARK: - Waiting downloads
+
+    /// Whether another download may start now (Settings › Downloads at Once).
+    var hasFreeSlot: Bool {
+        items.filter { $0.record.state == .running }.count < preferences.simultaneousDownloads
+    }
+
+    /// Starts waiting downloads once the change that freed a slot has settled.
+    func scheduleQueueCheck() {
+        guard !queueCheckScheduled else { return }
+        queueCheckScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                self?.queueCheckScheduled = false
+                self?.startQueued()
+            }
+        }
+    }
+
+    /// Starts the oldest waiting downloads, as many as there are free slots.
+    private func startQueued() {
+        let ids = DownloadScheduler.downloadsToStart(in: items.map(\.record), limit: preferences.simultaneousDownloads)
+        for id in ids {
+            guard let item = item(id), item.record.state == .queued else { continue }
+            if item.record.stream != nil {
+                resumeStream(item)
+            } else if item.record.sessionParts != nil {
+                guard item.move(to: .running) else { continue }
+                showInLiveActivity(item)
+                startSessionParts(item)
+            } else if let url = item.record.sourceURL, item.record.canRetry, url.scheme?.lowercased() != "data" {
+                guard item.move(to: .running) else { continue }
+                startInWebKit(item, url: url)
+            } else {
+                item.move(to: .failed) { $0.failureReason = "The download was interrupted." }
             }
         }
         save()
@@ -415,6 +468,7 @@ final class DownloadManager: NSObject, ObservableObject {
         let item = DownloadItem(record: record)
         item.onStateChange = { [weak self, weak item] in
             guard let self else { return }
+            self.scheduleQueueCheck()
             self.objectWillChange.send()
             self.activity.update(with: self.items)
             if let item {
@@ -910,18 +964,21 @@ extension DownloadManager: WKDownloadDelegate {
             let parts = preferences.downloadParts > 1
                 ? max(1, RangePlanner.ranges(totalBytes: expected, parts: preferences.downloadParts, minimumPartSize: 2 << 20).count)
                 : 1
+            let waits = !hasFreeSlot
             let record = DownloadRecord(
                 sourceURL: request.url ?? fileURL, pageURL: origin.pageURL, fileName: name, folder: folder,
-                mimeType: response.mimeType, expectedBytes: expected, state: .running, isPrivate: false,
-                sessionParts: parts)
+                mimeType: response.mimeType, expectedBytes: expected, state: waits ? .queued : .running,
+                isPrivate: false, sessionParts: parts)
             let item = makeItem(record)
             items.insert(item, at: 0)
             save()
             didStart.send(item)
-            showInLiveActivity(item)
             await copyCookiesToSharedStorage()
             await rememberUserAgent(from: download.webView)
-            startSessionParts(item, url: fileURL)
+            if !waits {
+                showInLiveActivity(item)
+                startSessionParts(item, url: fileURL)
+            }
             return nil
         }
         var record = DownloadRecord(

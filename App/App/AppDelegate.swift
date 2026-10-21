@@ -18,6 +18,12 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         if ProcessInfo.processInfo.arguments.contains("--seed-viewer-files") {
             TestFiles.writeViewerSamples()
         }
+        // UI tests: --download-limit <n> sets how many downloads run at once.
+        let arguments = ProcessInfo.processInfo.arguments
+        if let index = arguments.firstIndex(of: "--download-limit"), index + 1 < arguments.count,
+           let limit = Int(arguments[index + 1]) {
+            UserDefaults.standard.set(limit, forKey: "simultaneousDownloads")
+        }
         #endif
         Diagnostics.shared.start()
         _ = AppServices.shared

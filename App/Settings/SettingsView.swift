@@ -167,6 +167,10 @@ struct SettingsView: View {
             Toggle("Live Activity", isOn: binding(\.downloadLiveActivity))
             Toggle("Notifications", isOn: binding(\.downloadNotifications))
             Toggle("Background Downloads", isOn: binding(\.backgroundDownloads))
+            Picker("Downloads at Once", selection: binding(\.simultaneousDownloads)) {
+                ForEach([1, 2, 3, 5, 10], id: \.self) { Text("\($0)").tag($0) }
+            }
+            .accessibilityIdentifier("simultaneousDownloadsPicker")
             Picker("Parts per Download", selection: binding(\.downloadParts)) {
                 Text("1 (off)").tag(1)
                 Text("2").tag(2)

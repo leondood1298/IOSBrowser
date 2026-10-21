@@ -91,6 +91,7 @@ final class Preferences: ObservableObject {
             Key.downloadLiveActivity: true,
             Key.backgroundDownloads: true,
             Key.downloadParts: 4,
+            Key.simultaneousDownloads: 3,
             Key.downloadNotifications: true,
             Key.useTrash: true,
             Key.slideshowInterval: 3.0,
@@ -131,6 +132,7 @@ final class Preferences: ObservableObject {
         static let downloadLiveActivity = "downloadLiveActivity"
         static let backgroundDownloads = "backgroundDownloads"
         static let downloadParts = "downloadParts"
+        static let simultaneousDownloads = "simultaneousDownloads"
         static let downloadNotifications = "downloadNotifications"
         static let useTrash = "useTrash"
         static let viewerTransition = "viewerTransition"
@@ -342,6 +344,12 @@ final class Preferences: ObservableObject {
     var downloadParts: Int {
         get { min(max(defaults.integer(forKey: Key.downloadParts), 1), 8) }
         set { objectWillChange.send(); defaults.set(newValue, forKey: Key.downloadParts) }
+    }
+
+    /// How many downloads the browser runs at once; the rest wait their turn.
+    var simultaneousDownloads: Int {
+        get { min(max(defaults.integer(forKey: Key.simultaneousDownloads), 1), 10) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.simultaneousDownloads) }
     }
 
     /// Page zoom for sites without their own setting (1.0 = 100%).

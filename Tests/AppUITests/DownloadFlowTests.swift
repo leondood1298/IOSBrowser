@@ -24,6 +24,31 @@ final class DownloadFlowTests: UITestCase {
     }
 
     @MainActor
+    func testDownloadWaitsForAFreeSlot() throws {
+        launch(extraArguments: ["--download-limit", "1"])
+        open("localhost:8000")
+        waitForText("Browser test page")
+
+        app.webViews.links["Download an 8 MB file slowly"].tap()
+        let confirm = app.buttons["confirmDownloadButton"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 20))
+        confirm.tap()
+        XCTAssertTrue(confirm.waitForNonExistence(timeout: 10))
+        app.webViews.links["Download a 20 MB file"].tap()
+        XCTAssertTrue(confirm.waitForExistence(timeout: 20))
+        confirm.tap()
+
+        let downloads = element("downloadsButton")
+        XCTAssertTrue(downloads.waitForExistence(timeout: 20))
+        downloads.tap()
+        XCTAssertTrue(app.staticTexts["Waiting…"].waitForExistence(timeout: 20))
+        saveScreenshot("50-download-waiting")
+        // Pausing the slow one lets the waiting one start.
+        element("download-8MB.bin").buttons["Pause"].tap()
+        XCTAssertTrue(app.staticTexts["Waiting…"].waitForNonExistence(timeout: 30))
+    }
+
+    @MainActor
     func testPauseAndResume() throws {
         launch()
         open("localhost:8000")

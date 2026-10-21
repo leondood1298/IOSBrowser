@@ -27,9 +27,10 @@ extension DownloadManager {
     func startStream(
         _ job: StreamJob, fileName: String, folder: String, sourceURL: URL, from tab: TabModel?, request: StreamRequest
     ) {
+        let waits = !hasFreeSlot
         let record = DownloadRecord(
             sourceURL: sourceURL, pageURL: tab?.url, fileName: FileNaming.sanitize(fileName), folder: folder,
-            mimeType: "video/mp4", state: .running, isPrivate: tab?.isPrivate ?? false,
+            mimeType: "video/mp4", state: waits ? .queued : .running, isPrivate: tab?.isPrivate ?? false,
             stream: StreamProgress(segmentCount: job.segmentCount, quality: job.quality))
         let item = makeItem(record)
         insert(item)
@@ -41,6 +42,7 @@ extension DownloadManager {
             return
         }
         streamRequests[item.id] = request
+        guard !waits else { return }
         showInLiveActivity(item)
         runStream(item, job: job, request: request)
     }
@@ -59,9 +61,18 @@ extension DownloadManager {
     /// again (in the quality chosen before).
     func resumeStream(_ item: DownloadItem) {
         let state = item.record.state
-        guard state == .paused || state == .failed || state == .cancelled else { return }
-        if state != .paused {
+        guard state == .paused || state == .failed || state == .cancelled || state == .queued else { return }
+        if state != .paused && state != .queued {
             item.move(to: .queued)
+        }
+        // Waits for a slot; the queue starts it later.
+        guard hasFreeSlot else {
+            item.update { $0.failureReason = nil }
+            if state == .paused {
+                item.move(to: .queued)
+            }
+            save()
+            return
         }
         let moved = item.move(to: .running) { record in
             record.failureReason = nil
