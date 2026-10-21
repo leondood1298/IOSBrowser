@@ -27,9 +27,6 @@ jobs:
       - name: BrowserCore tests
         run: swift test --package-path Packages/BrowserCore 2>&1 | tee core.log
 
-      - name: MediaKit tests
-        run: swift test --package-path Packages/MediaKit 2>&1 | tee media.log
-
       - name: Pick simulator
         run: echo "SIM_ID=$(bash scripts/pick_simulator.sh)" >> "$GITHUB_ENV"
 
@@ -45,6 +42,11 @@ jobs:
             -destination "id=$SIM_ID" -derivedDataPath build/DD -only-testing:BrowserTests \
             -resultBundlePath build/UnitTests.xcresult \
             2>&1 | tee test.log | xcbeautify --renderer github-actions
+
+      # Last, and even after a failed build, so one round shows both kinds of problems.
+      - name: MediaKit tests
+        if: success() || failure()
+        run: swift test --package-path Packages/MediaKit 2>&1 | tee media.log
 
       - name: Error summary
         if: failure()

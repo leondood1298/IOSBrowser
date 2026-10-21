@@ -36,6 +36,7 @@ public final class TSRemuxer {
 
     private var videoQueue: [Item] = []
     private var audioQueue: [Item] = []
+    private var finishedInputs: Set<ObjectIdentifier> = []
     private var pendingFrame: VideoAccessUnit?
     private var lastFrameDuration: Int64 = 3750
     private var sawKeyframe = false
@@ -105,8 +106,8 @@ public final class TSRemuxer {
         try startIfReady(final: true)
         try drain(final: true)
         guard let writer else { throw Failure.noMedia }
-        videoInput?.markAsFinished()
-        audioInput?.markAsFinished()
+        finishInput(videoInput)
+        finishInput(audioInput)
         await writer.finishWriting()
         if writer.status != .completed {
             throw Failure.writer(writer.error?.localizedDescription ?? "The file couldn't be written.")
@@ -237,18 +238,16 @@ public final class TSRemuxer {
         if let videoFormat {
             let input = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: videoFormat)
             input.expectsMediaDataInRealTime = false
-            if writer.canAdd(input) {
-                writer.add(input)
-                videoInput = input
-            }
+            guard writer.canAdd(input) else { throw Failure.writer("The video track can't be written to this file.") }
+            writer.add(input)
+            videoInput = input
         }
         if let audioFormat {
             let input = AVAssetWriterInput(mediaType: .audio, outputSettings: nil, sourceFormatHint: audioFormat)
             input.expectsMediaDataInRealTime = false
-            if writer.canAdd(input) {
-                writer.add(input)
-                audioInput = input
-            }
+            guard writer.canAdd(input) else { throw Failure.writer("The audio track can't be written to this file.") }
+            writer.add(input)
+            audioInput = input
         }
         guard writer.startWriting() else {
             throw Failure.writer(writer.error?.localizedDescription ?? "The file couldn't be started.")
@@ -267,7 +266,7 @@ public final class TSRemuxer {
     /// Appends queued frames in time order. Until the end, only up to where both streams have
     /// data, so a stream never runs ahead of one that's still coming.
     private func drain(final: Bool) throws {
-        guard writer != nil else { return }
+        guard let writer else { return }
         if videoInput == nil { videoQueue.removeAll() }
         if audioInput == nil { audioQueue.removeAll() }
         var limit: CMTime?
@@ -275,54 +274,76 @@ public final class TSRemuxer {
             guard let lastVideo = videoQueue.last, let lastAudio = audioQueue.last else { return }
             limit = CMTimeMinimum(time(of: lastVideo), time(of: lastAudio))
         }
-        var videoIndex = 0
-        var audioIndex = 0
-        defer {
-            videoQueue.removeFirst(videoIndex)
-            audioQueue.removeFirst(audioIndex)
-        }
+        var idle = 0
         while true {
-            let nextVideo = videoIndex < videoQueue.count ? videoQueue[videoIndex] : nil
-            let nextAudio = audioIndex < audioQueue.count ? audioQueue[audioIndex] : nil
-            let takeVideo: Bool
-            switch (nextVideo, nextAudio) {
-            case (nil, nil): return
-            case (.some, nil): takeVideo = true
-            case (nil, .some): takeVideo = false
-            case (.some(let video), .some(let audio)): takeVideo = time(of: video) <= time(of: audio)
+            let movedVideo = try feed(&videoQueue, to: videoInput, limit: limit)
+            let movedAudio = try feed(&audioQueue, to: audioInput, limit: limit)
+            let videoLeft = hasItems(videoQueue, within: limit)
+            let audioLeft = hasItems(audioQueue, within: limit)
+            if !videoLeft && !audioLeft {
+                return
             }
-            let item = takeVideo ? nextVideo! : nextAudio!
-            if let limit, time(of: item) > limit { return }
-            try append(item)
-            if takeVideo { videoIndex += 1 } else { audioIndex += 1 }
-        }
-    }
-
-    private func append(_ item: Item) throws {
-        let input: AVAssetWriterInput?
-        let sample: CMSampleBuffer?
-        switch item {
-        case .video(let frame, let duration):
-            input = videoInput
-            sample = videoFormat.flatMap { SampleBuffers.videoSample(frame, duration: duration, format: $0, offset: 0) }
-        case .audio(let frames, let start):
-            input = audioInput
-            sample = audioFormat.flatMap { SampleBuffers.audioSample(frames, start: start, sampleRate: sampleRate, format: $0) }
-        }
-        guard let input, let sample, let writer else { return }
-        var waited = 0
-        while !input.isReadyForMoreMediaData {
+            if movedVideo || movedAudio {
+                idle = 0
+                continue
+            }
+            // The writer waits for the other stream to catch up; before the end, that comes with
+            // the next segment.
+            guard final else { return }
+            // At the end, a stream with nothing left is finished, so the writer stops waiting for it.
+            if !videoLeft { finishInput(videoInput) }
+            if !audioLeft { finishInput(audioInput) }
             if writer.status == .failed {
                 throw Failure.writer(writer.error?.localizedDescription ?? "Writing failed.")
             }
-            waited += 1
-            if waited > 30_000 {
+            idle += 1
+            if idle > 30_000 {
                 throw Failure.writer("The file writer stopped taking frames.")
             }
             usleep(1000)
         }
+    }
+
+    private func hasItems(_ queue: [Item], within limit: CMTime?) -> Bool {
+        guard let first = queue.first else { return false }
+        guard let limit else { return true }
+        return time(of: first) <= limit
+    }
+
+    /// Appends queued frames while the input takes them; returns whether any went in.
+    private func feed(_ queue: inout [Item], to input: AVAssetWriterInput?, limit: CMTime?) throws -> Bool {
+        guard let input, !finishedInputs.contains(ObjectIdentifier(input)) else { return false }
+        var count = 0
+        defer { queue.removeFirst(count) }
+        while count < queue.count, input.isReadyForMoreMediaData {
+            let item = queue[count]
+            if let limit, time(of: item) > limit {
+                break
+            }
+            try append(item, to: input)
+            count += 1
+        }
+        return count > 0
+    }
+
+    private func finishInput(_ input: AVAssetWriterInput?) {
+        guard let input, finishedInputs.insert(ObjectIdentifier(input)).inserted else { return }
+        input.markAsFinished()
+    }
+
+    private func append(_ item: Item, to input: AVAssetWriterInput) throws {
+        let sample: CMSampleBuffer?
+        switch item {
+        case .video(let frame, let duration):
+            sample = videoFormat.flatMap { SampleBuffers.videoSample(frame, duration: duration, format: $0, offset: 0) }
+        case .audio(let frames, let start):
+            sample = audioFormat.flatMap { SampleBuffers.audioSample(frames, start: start, sampleRate: sampleRate, format: $0) }
+        }
+        guard let sample else {
+            throw Failure.writer("A frame couldn't be prepared.")
+        }
         if !input.append(sample) {
-            throw Failure.writer(writer.error?.localizedDescription ?? "A frame couldn't be written.")
+            throw Failure.writer(writer?.error?.localizedDescription ?? "A frame couldn't be written.")
         }
     }
 }

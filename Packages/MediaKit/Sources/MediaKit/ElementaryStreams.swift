@@ -130,6 +130,17 @@ struct ADTSHeader: Equatable {
             UInt8((sampleRateIndex & 1) << 7 | channelConfig << 3),
         ]
     }
+
+    /// The AudioSpecificConfig wrapped in an MPEG-4 ES descriptor: the AAC magic cookie Core
+    /// Media uses (the contents of an MP4's esds box).
+    var esdsCookie: [UInt8] {
+        let specific: [UInt8] = [0x05, UInt8(audioSpecificConfig.count)] + audioSpecificConfig
+        // Object type 0x40 (MPEG-4 audio), stream type 5 (audio), buffer size and bit rates unknown.
+        let decoderConfig: [UInt8] = [0x04, UInt8(13 + specific.count), 0x40, 0x15] + [UInt8](repeating: 0, count: 11) + specific
+        let sync: [UInt8] = [0x06, 0x01, 0x02]
+        let body: [UInt8] = [0x00, 0x00, 0x00] + decoderConfig + sync
+        return [0x03, UInt8(body.count)] + body
+    }
 }
 
 /// Raw AAC frames from ADTS data. A frame cut off at the end waits for the next payload.

@@ -27,12 +27,15 @@ final class RemuxTests: XCTestCase {
         return output
     }
 
-    /// Decodes every sample of the track and returns how many there were.
-    private func decodedSamples(of track: AVAssetTrack, in asset: AVAsset) throws -> Int {
+    /// Reads every sample of the track, decoded or as stored, and returns how many there were.
+    private func samples(of track: AVAssetTrack, in asset: AVAsset, decoded: Bool) throws -> Int {
         let reader = try AVAssetReader(asset: asset)
-        let settings: [String: Any] = track.mediaType == .video
-            ? [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
-            : [AVFormatIDKey: kAudioFormatLinearPCM]
+        var settings: [String: Any]?
+        if decoded {
+            settings = track.mediaType == .video
+                ? [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+                : [AVFormatIDKey: kAudioFormatLinearPCM]
+        }
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: settings)
         reader.add(output)
         XCTAssertTrue(reader.startReading(), reader.error?.localizedDescription ?? "")
@@ -66,8 +69,9 @@ final class RemuxTests: XCTestCase {
         XCTAssertEqual(audio.count, 1)
         let size = try await video[0].load(.naturalSize)
         XCTAssertEqual(size, CGSize(width: 640, height: 360))
-        XCTAssertEqual(try decodedSamples(of: video[0], in: asset), 144)
-        XCTAssertGreaterThan(try decodedSamples(of: audio[0], in: asset), 44100 * 5)
+        XCTAssertEqual(try samples(of: video[0], in: asset, decoded: false), 144)
+        XCTAssertGreaterThan(try samples(of: video[0], in: asset, decoded: true), 140)
+        XCTAssertGreaterThan(try samples(of: audio[0], in: asset, decoded: true), 44100 * 5)
     }
 
     func testRemuxesVideoOnlyAndAudioOnlyStreams() async throws {
@@ -76,7 +80,7 @@ final class RemuxTests: XCTestCase {
         let silentTracks = try await video.loadTracks(withMediaType: .audio)
         XCTAssertEqual(videoTracks.count, 1)
         XCTAssertEqual(silentTracks.count, 0)
-        XCTAssertEqual(try decodedSamples(of: videoTracks[0], in: video), 144)
+        XCTAssertEqual(try samples(of: videoTracks[0], in: video, decoded: false), 144)
 
         let audio = AVURLAsset(url: try await remux(try segments("audio", count: 4), fileType: .m4a, extension: "m4a"))
         let audioTracks = try await audio.loadTracks(withMediaType: .audio)
@@ -97,7 +101,7 @@ final class RemuxTests: XCTestCase {
         let duration = try await asset.load(.duration).seconds
         XCTAssertEqual(duration, 4, accuracy: 0.25)
         let video = try await asset.loadTracks(withMediaType: .video)
-        XCTAssertEqual(try decodedSamples(of: video[0], in: asset), 96)
+        XCTAssertEqual(try samples(of: video[0], in: asset, decoded: false), 96)
     }
 
     func testRejectsWhatIsntMedia() async throws {

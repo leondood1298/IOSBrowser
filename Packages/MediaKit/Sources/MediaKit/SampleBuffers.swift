@@ -33,7 +33,7 @@ enum SampleBuffers {
             mFormatFlags: AudioFormatFlags(header.objectType), mBytesPerPacket: 0, mFramesPerPacket: 1024,
             mBytesPerFrame: 0, mChannelsPerFrame: UInt32(header.channels == 0 ? 2 : header.channels),
             mBitsPerChannel: 0, mReserved: 0)
-        let cookie = header.audioSpecificConfig
+        let cookie = header.esdsCookie
         var format: CMAudioFormatDescription?
         let status = cookie.withUnsafeBytes { bytes in
             CMAudioFormatDescriptionCreate(
