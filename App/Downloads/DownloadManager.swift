@@ -25,6 +25,8 @@ final class DownloadManager: NSObject, ObservableObject {
         var pageURL: URL?
         var isPrivate: Bool
         weak var presenter: UIViewController?
+        /// A name to use when the server's has no extension (a video saved from the media picker).
+        var preferredName: String?
     }
 
     private let preferences: Preferences
@@ -107,16 +109,17 @@ final class DownloadManager: NSObject, ObservableObject {
     // MARK: - Starting
 
     /// Takes over a download WebKit started for a page: a file link, or a response it can't show.
-    func adopt(_ download: WKDownload, from tab: TabModel?) {
+    func adopt(_ download: WKDownload, from tab: TabModel?, preferredName: String? = nil) {
         download.delegate = self
         origins[ObjectIdentifier(download)] = Origin(
             pageURL: tab?.url, isPrivate: tab?.isPrivate ?? false,
-            presenter: tab.flatMap { $0.delegate?.presenter(for: $0) })
+            presenter: tab.flatMap { $0.delegate?.presenter(for: $0) }, preferredName: preferredName)
     }
 
     /// Downloads a link from a page with that tab's web view, so its cookies apply and the page
-    /// is sent as the referrer. Works for the page's own blob: links too.
-    func download(_ url: URL, from tab: TabModel) {
+    /// is sent as the referrer. Works for the page's own blob: links too. `preferredName` is used
+    /// when the server's file name has no extension.
+    func download(_ url: URL, from tab: TabModel, preferredName: String? = nil) {
         if url.scheme?.lowercased() == "data" {
             saveDataURL(url, pageURL: tab.url, isPrivate: tab.isPrivate)
             return
@@ -131,7 +134,7 @@ final class DownloadManager: NSObject, ObservableObject {
         }
         webView.startDownload(using: request) { [weak self, weak tab] download in
             MainActor.assumeIsolated {
-                self?.adopt(download, from: tab)
+                self?.adopt(download, from: tab, preferredName: preferredName)
             }
         }
     }
@@ -834,6 +837,9 @@ extension DownloadManager: WKDownloadDelegate {
         guard let origin = origins.removeValue(forKey: key) else { return nil }
         let expected = response.expectedContentLength > 0 ? response.expectedContentLength : nil
         var name = FileNaming.sanitize(suggestedFilename)
+        if let preferred = origin.preferredName, (name as NSString).pathExtension.isEmpty {
+            name = FileNaming.sanitize(preferred)
+        }
         var folder = defaultFolder(forFileNamed: name, mimeType: response.mimeType)
         if preferences.confirmDownloads, let presenter = origin.presenter {
             let choice = await DownloadConfirmation.ask(

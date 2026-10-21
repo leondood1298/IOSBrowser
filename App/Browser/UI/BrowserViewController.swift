@@ -10,8 +10,8 @@ import WebKit
 final class BrowserViewController: UIViewController {
     let model: BrowserWindowModel
 
-    private var services: AppServices { model.services }
-    private let addressField = AddressField()
+    var services: AppServices { model.services }
+    let addressField = AddressField()
     private let tabStrip = TabStripView()
     private let progressView = UIProgressView(progressViewStyle: .bar)
     private let contentView = UIView()
@@ -209,6 +209,7 @@ final class BrowserViewController: UIViewController {
         }
         addressField.onPageSettings = { [weak self] source in self?.showPageSettings(from: source) }
         addressField.onShield = { [weak self] source in self?.showShield(from: source) }
+        addressField.onMedia = { [weak self] source in self?.showMediaPicker(from: source) }
         addressField.onTextChange = { [weak self] text in self?.showSuggestions(for: text) }
         addressField.editingTextProvider = { [weak self] url in
             guard let self, let url else { return nil }
@@ -283,6 +284,12 @@ final class BrowserViewController: UIViewController {
         tab.$showsStartPage
             .receive(on: RunLoop.main)
             .sink { [weak self] showsStartPage in self?.shareButton.isEnabled = !showsStartPage }
+            .store(in: &tabObservers)
+        tab.$detectedMedia
+            .receive(on: RunLoop.main)
+            .sink { [weak self] media in
+                self?.addressField.updateMedia(count: media.count, downloadable: media.contains(where: \.isDownloadable))
+            }
             .store(in: &tabObservers)
     }
 
@@ -768,7 +775,7 @@ final class BrowserViewController: UIViewController {
     }
 
     /// The controller on top, for presenting over the file manager or a popover.
-    private var topController: UIViewController {
+    var topController: UIViewController {
         var top: UIViewController = self
         while let presented = top.presentedViewController, !presented.isBeingDismissed {
             top = presented
@@ -1140,6 +1147,41 @@ extension BrowserViewController: TabModelDelegate {
 
     func downloadLink(_ url: URL, from tab: TabModel) {
         services.downloads.download(url, from: tab)
+    }
+
+    func showVideoMenu(_ media: DetectedMedia, at point: CGPoint, in sourceView: UIView, from tab: TabModel) {
+        guard presentedViewController == nil else { return }
+        let media = named(media, in: tab)
+        let isAudio = media.kind == .audio
+        let message = media.isDownloadable ? media.suggestedFileName : unsaveableReason(media)
+        let sheet = UIAlertController(title: nil, message: message, preferredStyle: .actionSheet)
+        if media.isDownloadable {
+            sheet.addAction(UIAlertAction(title: isAudio ? "Download Audio" : "Download Video", style: .default) { [weak self] _ in
+                self?.downloadMedia(media, from: tab)
+            })
+        }
+        if media.kind != .stream, !media.isProtected {
+            sheet.addAction(UIAlertAction(title: "Play in Player", style: .default) { [weak self] _ in
+                self?.playMedia(media, from: tab)
+            })
+        }
+        if media.kind != .stream {
+            sheet.addAction(UIAlertAction(title: isAudio ? "Copy Audio Address" : "Copy Video Address", style: .default) { [weak self] _ in
+                self?.copyMediaAddress(media)
+            })
+        }
+        if tab.detectedMedia.contains(where: { $0.url != media.url }) {
+            sheet.addAction(UIAlertAction(title: "All Video and Audio on This Page…", style: .default) { [weak self] _ in
+                guard let self else { return }
+                self.showMediaPicker(from: self.addressField)
+            })
+        }
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = sourceView
+            popover.sourceRect = CGRect(origin: point, size: CGSize(width: 1, height: 1))
+        }
+        present(sheet, animated: true)
     }
 
     func imageAction(_ action: ContextMenus.ImageAction, url: URL, from tab: TabModel) {

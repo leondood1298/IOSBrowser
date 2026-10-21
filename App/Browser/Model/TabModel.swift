@@ -39,6 +39,8 @@ final class TabModel: NSObject, ObservableObject, Identifiable {
     @Published private(set) var isMuted = false
     /// Trackers blocked on the current page, by category.
     @Published private(set) var trackerCounts = TrackerCounts()
+    /// Video and audio found on the current page, for the media button.
+    @Published private(set) var detectedMedia: [DetectedMedia] = []
 
     private(set) var webView: WKWebView?
     private(set) var lastActive: Date
@@ -155,7 +157,7 @@ final class TabModel: NSObject, ObservableObject, Identifiable {
             }
         }
         webView.customUserAgent = effectiveUserAgent(for: pendingURL ?? url)
-        addImageLongPress(to: webView)
+        addLongPressFallback(to: webView)
         observe(webView)
     }
 
@@ -308,6 +310,10 @@ final class TabModel: NSObject, ObservableObject, Identifiable {
             countTracker(body)
             return
         }
+        if name == ScriptMessageRouter.mediaFoundHandler {
+            addDetectedMedia(body)
+            return
+        }
         guard name == ScriptMessageRouter.mediaHandler, let info = body as? [String: Any],
               let frame = info["frame"] as? String
         else { return }
@@ -340,10 +346,37 @@ final class TabModel: NSObject, ObservableObject, Identifiable {
         AppServices.shared.preferences.addBlockedTrackers(1)
     }
 
+    /// Adds the video and audio a frame of the page reports. Pages with many clips list the first 40.
+    private func addDetectedMedia(_ body: Any) {
+        guard let info = body as? [String: Any], let items = info["items"] as? [[String: Any]] else { return }
+        var list = detectedMedia
+        for item in items {
+            guard let address = item["url"] as? String, let mediaURL = URL(string: address) else { continue }
+            let element = (item["element"] as? String).flatMap(DetectedMedia.Kind.init(rawValue:))
+            guard let kind = DetectedMedia.kind(of: mediaURL, elementKind: element, mimeType: item["type"] as? String),
+                  list.count < 40 || list.contains(where: { $0.url == mediaURL })
+            else { continue }
+            let width = item["width"] as? Int ?? 0
+            let height = item["height"] as? Int ?? 0
+            let duration = item["duration"] as? Double ?? 0
+            let media = DetectedMedia(
+                url: mediaURL, kind: kind, pageTitle: pageTitle,
+                width: width > 0 ? width : nil, height: height > 0 ? height : nil,
+                duration: duration > 0 ? duration : nil, isProtected: item["drm"] as? Bool ?? false)
+            list = DetectedMedia.merge(list, adding: media)
+        }
+        if list != detectedMedia {
+            detectedMedia = list
+        }
+    }
+
     /// A new page started: forget the old page's media and tracker counts.
     func resetMediaState() {
         trackerCounts = TrackerCounts()
         mediaFrames.removeAll()
+        if !detectedMedia.isEmpty {
+            detectedMedia = []
+        }
         if isPlayingAudio {
             isPlayingAudio = false
         }

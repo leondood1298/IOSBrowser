@@ -1,3 +1,4 @@
+import BrowserCore
 import UIKit
 import WebKit
 
@@ -12,6 +13,8 @@ protocol ContextMenuHandler: AnyObject {
     func imageAction(_ action: ContextMenus.ImageAction, url: URL, from tab: TabModel)
     /// The menu for a long-pressed image that isn't a link (WebKit offers none for those).
     func showImageMenu(_ url: URL, at point: CGPoint, in sourceView: UIView, from tab: TabModel)
+    /// The menu for a long-pressed video or audio element.
+    func showVideoMenu(_ media: DetectedMedia, at point: CGPoint, in sourceView: UIView, from tab: TabModel)
 }
 
 /// Builds the long-press menus for links and images (WebKit supplies the link preview).

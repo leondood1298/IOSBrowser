@@ -12,6 +12,8 @@ final class VideoPlayback: NSObject, AVPlayerViewControllerDelegate, UIGestureRe
 
     let controller = AVPlayerViewController()
     private let urls: [URL]
+    /// For videos from a page: its cookies and user agent.
+    private let assetOptions: [String: Any]
     private let positions: PlaybackPositions
     private let queue = AVQueuePlayer()
     private var timeObserver: Any?
@@ -20,8 +22,11 @@ final class VideoPlayback: NSObject, AVPlayerViewControllerDelegate, UIGestureRe
     private let hint = UILabel()
     private var inPictureInPicture = false
 
-    init(urls: [URL], index: Int, preferences: Preferences, positions: PlaybackPositions) {
+    init(
+        urls: [URL], index: Int, preferences: Preferences, positions: PlaybackPositions, assetOptions: [String: Any] = [:]
+    ) {
         self.urls = urls
+        self.assetOptions = assetOptions
         self.positions = positions
         super.init()
         controller.player = queue
@@ -66,7 +71,7 @@ final class VideoPlayback: NSObject, AVPlayerViewControllerDelegate, UIGestureRe
     /// Queues the videos from `start` on.
     private func load(from start: Int) {
         for url in urls[start...] {
-            let item = AVPlayerItem(url: url)
+            let item = AVPlayerItem(asset: AVURLAsset(url: url, options: assetOptions))
             queue.insert(item, after: nil)
             endObservers.append(NotificationCenter.default.addObserver(
                 forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main

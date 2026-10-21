@@ -9,6 +9,7 @@ final class AddressField: UITextField {
     var onReloadOrStop: (() -> Void)?
     var onPageSettings: ((UIView) -> Void)?
     var onShield: ((UIView) -> Void)?
+    var onMedia: ((UIView) -> Void)?
     /// Called with the text whenever editing starts or the text changes.
     var onTextChange: ((String) -> Void)?
     var onEditingEnded: (() -> Void)?
@@ -25,6 +26,9 @@ final class AddressField: UITextField {
     private let shieldButton = UIButton(type: .system)
     private let pageSettingsButton = UIButton(type: .system)
     private let reloadButton = UIButton(type: .system)
+    /// The media button (shown while the page has video or audio) and the reload button.
+    private let trailingButtons = UIView(frame: CGRect(x: 0, y: 0, width: 38, height: 38))
+    private let mediaButton = UIButton(type: .system)
     private var currentURL: URL?
     private var isSecurePage = false
     private var isLoadingPage = false
@@ -84,11 +88,21 @@ final class AddressField: UITextField {
         leadingButtons.addSubview(pageSettingsButton)
         leftView = leadingButtons
 
+        mediaButton.frame = CGRect(x: 0, y: 0, width: 38, height: 38)
+        mediaButton.accessibilityIdentifier = "mediaButton"
+        mediaButton.accessibilityLabel = "Video and Audio on This Page"
+        mediaButton.isHidden = true
+        mediaButton.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.onMedia?(self.mediaButton)
+        }, for: .touchUpInside)
         reloadButton.frame = CGRect(x: 0, y: 0, width: 38, height: 38)
         reloadButton.tintColor = .label
         reloadButton.accessibilityIdentifier = "reloadButton"
         reloadButton.addAction(UIAction { [weak self] _ in self?.onReloadOrStop?() }, for: .touchUpInside)
-        rightView = reloadButton
+        trailingButtons.addSubview(mediaButton)
+        trailingButtons.addSubview(reloadButton)
+        rightView = trailingButtons
 
         heightAnchor.constraint(equalToConstant: 38).isActive = true
         let preferredWidth = widthAnchor.constraint(equalToConstant: 680)
@@ -142,6 +156,21 @@ final class AddressField: UITextField {
         shieldButton.accessibilityValue = !secure ? "Connection not secure" : (protected ? "On" : "Off")
     }
 
+    /// Shows the media button while the page has video or audio: a download arrow when some of it
+    /// can be saved, a film strip when it only streams.
+    func updateMedia(count: Int, downloadable: Bool) {
+        let show = count > 0
+        mediaButton.isHidden = !show
+        mediaButton.setImage(UIImage(systemName: downloadable ? "arrow.down.circle" : "film"), for: .normal)
+        mediaButton.tintColor = downloadable ? UIColor.tintColor : UIColor.secondaryLabel
+        mediaButton.accessibilityValue = count == 1 ? "1 item" : "\(count) items"
+        let width: CGFloat = show ? 76 : 38
+        guard trailingButtons.frame.width != width else { return }
+        trailingButtons.frame.size.width = width
+        reloadButton.frame.origin.x = show ? 38 : 0
+        setNeedsLayout()
+    }
+
     /// Puts the cursor in the field with the full address selected.
     func beginEditingAddress() {
         becomeFirstResponder()
@@ -173,6 +202,11 @@ final class AddressField: UITextField {
             inset = max(inset, rightView.frame.width + 2)
         }
         return bounds.insetBy(dx: min(inset, bounds.width / 2), dy: 0)
+    }
+
+    override func rightViewRect(forBounds bounds: CGRect) -> CGRect {
+        let size = trailingButtons.frame.size
+        return CGRect(x: bounds.maxX - size.width, y: bounds.midY - size.height / 2, width: size.width, height: size.height)
     }
 
     /// While editing, the text starts near the left end and stops before the clear button.
