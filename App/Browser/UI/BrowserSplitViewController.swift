@@ -5,6 +5,7 @@ import UIKit
 nonisolated enum LibrarySection {
     case bookmarks
     case history
+    case downloads
 }
 
 /// The root of each window: a collapsible sidebar next to the browser.
@@ -34,7 +35,7 @@ final class BrowserSplitViewController: UISplitViewController, UISplitViewContro
         fatalError("init(coder:) is not supported")
     }
 
-    /// Shows bookmarks or history: in the sidebar when there's room, otherwise as a sheet.
+    /// Shows bookmarks, history or downloads: in the sidebar when there's room, otherwise as a sheet.
     func showLibrary(_ section: LibrarySection) {
         if traitCollection.horizontalSizeClass == .regular {
             show(.primary)
@@ -70,6 +71,10 @@ final class BrowserSplitViewController: UISplitViewController, UISplitViewContro
             controller = UIHostingController(rootView: HistoryView(
                 history: services.history, favicons: services.favicons, onOpen: open))
             controller.title = "History"
+        case .downloads:
+            controller = UIHostingController(rootView: DownloadsView(
+                manager: services.downloads, actions: browser.downloadActions(dismissingFirst: inSheet)))
+            controller.title = "Downloads"
         }
         return controller
     }

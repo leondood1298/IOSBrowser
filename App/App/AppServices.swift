@@ -12,6 +12,7 @@ final class AppServices {
     let siteSettings: SiteSettingsStore
     let favicons: FaviconStore
     let searchEngines: SearchEngineStore
+    let downloads: DownloadManager
 
     init(
         preferences: Preferences = Preferences(),
@@ -21,7 +22,8 @@ final class AppServices {
         bookmarks: BookmarkStore = BookmarkStore(),
         siteSettings: SiteSettingsStore = SiteSettingsStore(),
         favicons: FaviconStore = FaviconStore(),
-        searchEngines: SearchEngineStore? = nil
+        searchEngines: SearchEngineStore? = nil,
+        downloads: DownloadManager? = nil
     ) {
         self.preferences = preferences
         self.privateSession = privateSession
@@ -31,5 +33,6 @@ final class AppServices {
         self.siteSettings = siteSettings
         self.favicons = favicons
         self.searchEngines = searchEngines ?? SearchEngineStore(preferences: preferences)
+        self.downloads = downloads ?? DownloadManager(preferences: preferences)
     }
 }

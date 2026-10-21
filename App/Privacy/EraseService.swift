@@ -28,6 +28,11 @@ struct ClearDataRequest {
     var cookiesAndSiteData = true
     var cache = true
     var closedTabs = true
+    var downloadList = true
+
+    var isEmpty: Bool {
+        !history && !cookiesAndSiteData && !cache && !closedTabs && !downloadList
+    }
 }
 
 /// Erasing private browsing (Firefox Focus's trash button) and clearing normal browsing data.
@@ -38,6 +43,7 @@ enum EraseService {
         for window in services.tabStore.windowModels where window.isPrivate || !window.privateGroup.tabs.isEmpty {
             window.closeAllTabs(isPrivate: true)
         }
+        services.downloads.erasePrivateDownloads()
         services.privateSession.reset()
         URLCache.shared.removeAllCachedResponses()
         services.favicons.clearMemoryCache()
@@ -67,6 +73,9 @@ enum EraseService {
         }
         if request.closedTabs {
             services.tabStore.windowModels.forEach { $0.clearRecentlyClosed() }
+        }
+        if request.downloadList {
+            services.downloads.clearList(since: start)
         }
         if request.history && start == nil {
             services.favicons.removeAll()

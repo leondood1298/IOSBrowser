@@ -1,7 +1,7 @@
 import BrowserCore
 import SwiftUI
 
-/// The Settings screen. Later milestones add Privacy, Search and Downloads sections.
+/// The Settings screen.
 struct SettingsView: View {
     @ObservedObject var preferences: Preferences
     @ObservedObject var sites: SiteSettingsStore
@@ -25,6 +25,7 @@ struct SettingsView: View {
                 privacySection
                 securitySection
                 linksSection
+                downloadsSection
                 aboutSection
             }
             .alert("Block Other Content Trackers?", isPresented: $confirmingContent) {
@@ -147,6 +148,23 @@ struct SettingsView: View {
                 LabeledContent("Search", value: AppServices.shared.searchEngines.defaultEngine.name)
             }
             .accessibilityIdentifier("searchSettingsLink")
+        }
+    }
+
+    private var downloadsSection: some View {
+        Section {
+            Toggle("Ask Before Downloading", isOn: binding(\.confirmDownloads))
+            Picker("Save Downloads To", selection: binding(\.downloadFolder)) {
+                ForEach(AppFolders.defaultFolderNames, id: \.self) { name in
+                    Text(name).tag(name)
+                }
+            }
+            .disabled(preferences.sortDownloadsByType)
+            Toggle("Sort by File Type", isOn: binding(\.sortDownloadsByType))
+        } header: {
+            Text("Downloads")
+        } footer: {
+            Text("Sorting puts videos in Videos, music in Music, images in Pictures and documents in Documents. Other files go to Downloads.")
         }
     }
 

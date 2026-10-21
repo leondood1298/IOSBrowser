@@ -157,6 +157,10 @@ enum TestServices {
         return JSONFileStore(url: url)
     }
 
+    static func temporaryDirectory() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    }
+
     static func temporaryStore<Value: Codable>(_ name: String) -> JSONFileStore<Value> {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -172,6 +176,8 @@ enum TestServices {
             history: HistoryStore(file: temporaryStore("history.json")),
             bookmarks: BookmarkStore(file: temporaryStore("bookmarks.json")),
             siteSettings: SiteSettingsStore(file: temporaryStore("sites.json")),
-            searchEngines: SearchEngineStore(preferences: preferences, file: temporaryStore("engines.json")))
+            searchEngines: SearchEngineStore(preferences: preferences, file: temporaryStore("engines.json")),
+            downloads: DownloadManager(
+                preferences: preferences, file: temporaryStore("downloads.json"), directory: temporaryDirectory()))
     }
 }

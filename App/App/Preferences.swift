@@ -69,6 +69,9 @@ final class Preferences: ObservableObject {
             Key.searchSuggestions: false,
             Key.autocompleteTopSites: true,
             Key.autocompleteCustomSites: true,
+            Key.confirmDownloads: true,
+            Key.downloadFolder: "Downloads",
+            Key.sortDownloadsByType: false,
         ])
         if defaults.object(forKey: Key.installDate) == nil {
             defaults.set(Date(), forKey: Key.installDate)
@@ -99,6 +102,9 @@ final class Preferences: ObservableObject {
         static let autocompleteTopSites = "autocompleteTopSites"
         static let autocompleteCustomSites = "autocompleteCustomSites"
         static let customDomains = "customAutocompleteDomains"
+        static let confirmDownloads = "confirmDownloads"
+        static let downloadFolder = "downloadFolder"
+        static let sortDownloadsByType = "sortDownloadsByType"
     }
 
     // MARK: Privacy
@@ -223,6 +229,26 @@ final class Preferences: ObservableObject {
     var customAutocompleteDomains: [String] {
         get { defaults.stringArray(forKey: Key.customDomains) ?? [] }
         set { objectWillChange.send(); defaults.set(newValue, forKey: Key.customDomains) }
+    }
+
+    // MARK: Downloads
+
+    /// Show the name, size and folder before a download starts.
+    var confirmDownloads: Bool {
+        get { defaults.bool(forKey: Key.confirmDownloads) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.confirmDownloads) }
+    }
+
+    /// The folder under Documents that downloads go to.
+    var downloadFolder: String {
+        get { defaults.string(forKey: Key.downloadFolder) ?? "Downloads" }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.downloadFolder) }
+    }
+
+    /// Put videos in Videos, music in Music, images in Pictures and documents in Documents.
+    var sortDownloadsByType: Bool {
+        get { defaults.bool(forKey: Key.sortDownloadsByType) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.sortDownloadsByType) }
     }
 
     /// Page zoom for sites without their own setting (1.0 = 100%).

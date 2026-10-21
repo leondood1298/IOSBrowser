@@ -9,11 +9,11 @@ enum AppFolders {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
 
-    /// Deletes saved tabs, history, bookmarks and settings (not downloaded files).
+    /// Deletes saved tabs, history, bookmarks, settings and unfinished downloads (not files).
     static func eraseSavedState() {
         let fileManager = FileManager.default
         let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        for name in ["Sessions", "Library"] {
+        for name in ["Sessions", "Library", "Downloads"] {
             try? fileManager.removeItem(at: support.appendingPathComponent(name))
         }
         if let domain = Bundle.main.bundleIdentifier {

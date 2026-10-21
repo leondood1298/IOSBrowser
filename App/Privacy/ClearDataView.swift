@@ -27,6 +27,7 @@ struct ClearDataView: View {
                     Toggle("Cookies and Website Data", isOn: $request.cookiesAndSiteData)
                     Toggle("Cached Images and Files", isOn: $request.cache)
                     Toggle("Recently Closed Tabs", isOn: $request.closedTabs)
+                    Toggle("Download List", isOn: $request.downloadList)
                 } footer: {
                     Text("Private tabs aren't affected; use Erase for those. Clearing cookies signs you out of websites.")
                 }
@@ -35,7 +36,7 @@ struct ClearDataView: View {
                         onClear(request)
                     }
                     .accessibilityIdentifier("confirmClearDataButton")
-                    .disabled(!request.history && !request.cookiesAndSiteData && !request.cache && !request.closedTabs)
+                    .disabled(request.isEmpty)
                 }
             }
             .navigationTitle("Clear Browsing Data")

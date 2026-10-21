@@ -57,6 +57,16 @@ final class BrowserViewController: UIViewController {
         item.accessibilityIdentifier = "newTabButton"
         return item
     }()
+    private lazy var downloadsRing: DownloadsRingView = {
+        let ring = DownloadsRingView()
+        ring.addAction(UIAction { [weak self] _ in self?.showDownloadsPopover() }, for: .touchUpInside)
+        return ring
+    }()
+    private lazy var downloadsButton: UIBarButtonItem = {
+        let item = UIBarButtonItem(customView: downloadsRing)
+        item.accessibilityLabel = "Downloads"
+        return item
+    }()
     private lazy var moreButton: UIBarButtonItem = {
         let item = UIBarButtonItem(
             image: UIImage(systemName: "ellipsis.circle"),
@@ -104,6 +114,7 @@ final class BrowserViewController: UIViewController {
             .receive(on: RunLoop.main)
             .sink { [weak self] isPrivate in self?.applyPrivateAppearance(isPrivate) }
             .store(in: &modelObservers)
+        observeDownloads()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -123,9 +134,10 @@ final class BrowserViewController: UIViewController {
         navigationItem.leftItemsSupplementBackButton = true
         let compact = traitCollection.horizontalSizeClass == .compact
         let erase: [UIBarButtonItem] = model.isPrivate ? [eraseButton] : []
+        let downloads: [UIBarButtonItem] = services.downloads.items.isEmpty ? [] : [downloadsButton]
         if compact {
             navigationItem.leftBarButtonItems = []
-            navigationItem.rightBarButtonItems = [moreButton] + erase
+            navigationItem.rightBarButtonItems = [moreButton] + downloads + erase
             toolbarItems = [
                 backButton, .flexibleSpace(), forwardButton, .flexibleSpace(), shareButton, .flexibleSpace(),
                 newTabButton, .flexibleSpace(), tabsButton,
@@ -133,7 +145,7 @@ final class BrowserViewController: UIViewController {
         } else {
             toolbarItems = []
             navigationItem.leftBarButtonItems = [backButton, forwardButton]
-            navigationItem.rightBarButtonItems = [moreButton, tabsButton, newTabButton, shareButton] + erase
+            navigationItem.rightBarButtonItems = [moreButton, tabsButton, newTabButton, shareButton] + downloads + erase
         }
         navigationController?.setToolbarHidden(!compact, animated: false)
         tabStripHeight?.constant = compact ? 0 : 38
@@ -525,6 +537,9 @@ final class BrowserViewController: UIViewController {
             UIAction(title: "History", image: UIImage(systemName: "clock")) { [weak self] _ in
                 self?.showLibrary(.history)
             },
+            UIAction(title: "Downloads", image: UIImage(systemName: "arrow.down.circle")) { [weak self] _ in
+                self?.showDownloads()
+            },
         ]))
         sections.append(UIMenu(options: .displayInline, children: [
             model.isPrivate
@@ -539,6 +554,95 @@ final class BrowserViewController: UIViewController {
             },
         ]))
         return sections
+    }
+
+    // MARK: - Downloads
+
+    private func observeDownloads() {
+        let downloads = services.downloads
+        downloads.$items
+            .map(\.isEmpty)
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.applyWidthLayout() }
+            .store(in: &modelObservers)
+        downloads.$overallProgress.combineLatest(downloads.$runningCount)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] progress, running in
+                self?.downloadsRing.progress = running > 0 ? (progress ?? 0) : nil
+            }
+            .store(in: &modelObservers)
+        downloads.didStart
+            .receive(on: RunLoop.main)
+            .sink { [weak self] item in
+                guard let self, self.view.window?.isKeyWindow == true, !self.services.preferences.confirmDownloads else { return }
+                Toast.show("Downloading \(item.record.fileName)", systemImage: "arrow.down.circle", in: self.view)
+            }
+            .store(in: &modelObservers)
+        downloads.didFinish
+            .receive(on: RunLoop.main)
+            .sink { [weak self] item in
+                guard let self, self.view.window?.isKeyWindow == true else { return }
+                self.downloadsRing.bounce()
+                Toast.show("Downloaded \(item.record.fileName)", systemImage: "checkmark.circle", in: self.view)
+            }
+            .store(in: &modelObservers)
+    }
+
+    /// Shows the downloads: from the toolbar button when it's there, otherwise in the sidebar.
+    func showDownloads() {
+        if navigationItem.rightBarButtonItems?.contains(downloadsButton) == true {
+            showDownloadsPopover()
+        } else {
+            showLibrary(.downloads)
+        }
+    }
+
+    private func showDownloadsPopover() {
+        guard presentedViewController == nil else { return }
+        let list = UIHostingController(rootView: DownloadsView(
+            manager: services.downloads, actions: downloadActions(dismissingFirst: true)))
+        list.title = "Downloads"
+        let navigation = UINavigationController(rootViewController: list)
+        navigation.modalPresentationStyle = .popover
+        navigation.preferredContentSize = CGSize(width: 440, height: 560)
+        navigation.popoverPresentationController?.sourceItem = downloadsButton
+        present(navigation, animated: true)
+    }
+
+    /// What the Downloads list can ask of this window. From a popover or sheet, that closes first.
+    func downloadActions(dismissingFirst: Bool) -> DownloadActions {
+        let run: (@escaping () -> Void) -> Void = { [weak self] action in
+            guard let self else { return }
+            if dismissingFirst, self.presentedViewController != nil {
+                self.dismiss(animated: true, completion: action)
+            } else {
+                action()
+            }
+        }
+        return DownloadActions(
+            openFile: { [weak self] item in run { self?.openDownloadedFile(item) } },
+            share: { [weak self] item in run { self?.shareDownloadedFile(item) } },
+            showInFiles: { item in DownloadedFiles.showInFiles(item.fileURL) },
+            openPage: { [weak self] url in run { self?.model.open(url) } },
+            presenter: { [weak self] in self },
+            isPrivate: { [weak self] in self?.model.isPrivate ?? false })
+    }
+
+    private func openDownloadedFile(_ item: DownloadItem) {
+        guard FileManager.default.fileExists(atPath: item.fileURL.path) else {
+            Toast.show("The file was moved or deleted", systemImage: "exclamationmark.triangle", in: view)
+            return
+        }
+        present(FilePreviewController(fileURL: item.fileURL), animated: true)
+    }
+
+    private func shareDownloadedFile(_ item: DownloadItem) {
+        guard FileManager.default.fileExists(atPath: item.fileURL.path) else {
+            Toast.show("The file was moved or deleted", systemImage: "exclamationmark.triangle", in: view)
+            return
+        }
+        PageActions.share(items: [item.fileURL], from: self, sourceView: displayedWebView ?? view)
     }
 
     // MARK: - Actions
@@ -795,7 +899,7 @@ extension BrowserViewController: TabModelDelegate {
     }
 
     func downloadLink(_ url: URL, from tab: TabModel) {
-        Toast.show("The download manager arrives in the next version", systemImage: "arrow.down.circle", in: view)
+        services.downloads.download(url, from: tab)
     }
 
     func imageAction(_ action: ContextMenus.ImageAction, url: URL, from tab: TabModel) {
@@ -810,8 +914,12 @@ extension BrowserViewController: TabModelDelegate {
                     ImageActions.copy(image.data, type: image.type)
                     Toast.show("Image copied", systemImage: "doc.on.clipboard", in: view)
                 case .download:
-                    let file = try ImageActions.saveToDownloads(image.data, filename: image.filename, type: image.type)
-                    Toast.show("Saved \(file.lastPathComponent) to Downloads", systemImage: "arrow.down.doc", in: view)
+                    let downloads = services.downloads
+                    let folder = downloads.defaultFolder(forFileNamed: image.filename, mimeType: image.type?.preferredMIMEType)
+                    let file = try ImageActions.saveToDownloads(
+                        image.data, filename: image.filename, type: image.type, folder: folder)
+                    downloads.addSavedFile(file, folder: folder, sourceURL: url, pageURL: tab.url, isPrivate: tab.isPrivate)
+                    Toast.show("Saved \(file.lastPathComponent) to \(folder)", systemImage: "arrow.down.doc", in: view)
                 case .share:
                     let file = try ImageActions.temporaryFile(image.data, filename: image.filename, type: image.type)
                     share([file], from: tab)
@@ -847,6 +955,7 @@ extension BrowserViewController {
     @objc func zoomOutCommand(_ sender: Any?) { adjustZoom(-1) }
     @objc func actualSizeCommand(_ sender: Any?) { adjustZoom(0) }
     @objc func showSettingsCommand(_ sender: Any?) { showSettings() }
+    @objc func showDownloadsCommand(_ sender: Any?) { showDownloads() }
     @objc func eraseCommand(_ sender: Any?) {
         if model.isPrivate { erasePrivateBrowsing() } else { showClearBrowsingData() }
     }

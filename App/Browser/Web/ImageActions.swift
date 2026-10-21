@@ -73,12 +73,14 @@ enum ImageActions {
     }
 
     /// Writes the image to Documents/Downloads and returns where it went.
-    static func saveToDownloads(_ data: Data, filename: String, type: UTType?) throws -> URL {
+    static func saveToDownloads(
+        _ data: Data, filename: String, type: UTType?, folder folderName: String = "Downloads"
+    ) throws -> URL {
         var name = filename
         if (name as NSString).pathExtension.isEmpty, let ext = type?.preferredFilenameExtension {
             name += ".\(ext)"
         }
-        let folder = AppFolders.documentsDirectory.appendingPathComponent("Downloads", isDirectory: true)
+        let folder = AppFolders.documentsDirectory.appendingPathComponent(folderName, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let destination = FileNaming.uniqueURL(in: folder, for: name)
         try data.write(to: destination, options: .atomic)

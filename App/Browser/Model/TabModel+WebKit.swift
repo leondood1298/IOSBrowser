@@ -12,6 +12,10 @@ extension TabModel: WKNavigationDelegate {
     ) async -> (WKNavigationActionPolicy, WKWebpagePreferences) {
         guard let url = navigationAction.request.url else { return (.allow, preferences) }
         let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? true
+        // <a download> links.
+        if navigationAction.shouldPerformDownload {
+            return (.download, preferences)
+        }
 
         switch ExternalLinkPolicy.action(for: url) {
         case .load:
@@ -82,15 +86,26 @@ extension TabModel: WKNavigationDelegate {
         _ webView: WKWebView,
         decidePolicyFor navigationResponse: WKNavigationResponse
     ) async -> WKNavigationResponsePolicy {
-        guard navigationResponse.isForMainFrame, !navigationResponse.canShowMIMEType else { return .allow }
-        // Downloads arrive in M3. Until then, say why nothing happened.
-        if let presenter = delegate?.presenter(for: self) {
-            let name = navigationResponse.response.suggestedFilename ?? "This file"
-            await Prompts.notice(
-                from: presenter, title: "Can't open this file yet",
-                message: "\(name) can't be shown in the browser. Downloads are coming in a later version.")
+        // Files sent as attachments are downloaded from any frame; pages that can't be shown only
+        // from the main frame (a frame with an odd type shouldn't start a download).
+        let disposition = (navigationResponse.response as? HTTPURLResponse)?
+            .value(forHTTPHeaderField: "Content-Disposition")?
+            .trimmingCharacters(in: .whitespaces).lowercased()
+        if disposition?.hasPrefix("attachment") == true {
+            return .download
         }
-        return .cancel
+        if navigationResponse.isForMainFrame && !navigationResponse.canShowMIMEType {
+            return .download
+        }
+        return .allow
+    }
+
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        AppServices.shared.downloads.adopt(download, from: self)
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        AppServices.shared.downloads.adopt(download, from: self)
     }
 
     func webView(

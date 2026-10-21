@@ -25,6 +25,7 @@ enum MainMenu {
             command("Reload Page", #selector(BrowserViewController.reloadCommand(_:)), "r"),
             command("Stop", #selector(BrowserViewController.stopCommand(_:)), "."),
             command("Show All Tabs", #selector(BrowserViewController.showAllTabsCommand(_:)), "\\", [.command, .shift]),
+            command("Show Downloads", #selector(BrowserViewController.showDownloadsCommand(_:)), "l", [.command, .alternate]),
         ]), atStartOfMenu: .view)
         builder.insertChild(UIMenu(options: .displayInline, children: [
             command("Zoom In", #selector(BrowserViewController.zoomInCommand(_:)), "+"),
