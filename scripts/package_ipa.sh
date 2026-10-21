@@ -26,6 +26,17 @@ done
 rm -rf "$out/Payload"
 mkdir -p "$out/Payload"
 cp -R "$app" "$out/Payload/"
+# Embedded frameworks keep only their arm64 code: iPadOS 26 runs nothing else, and VLC's 32-bit
+# slices more than double its size. (Signulous re-signs everything, so thinning is safe.)
+for framework in "$out/Payload/Browser.app/Frameworks/"*.framework; do
+    [ -d "$framework" ] || continue
+    binary="$framework/$(basename "$framework" .framework)"
+    if [ -f "$binary" ] && [ "$(lipo -archs "$binary")" != "arm64" ]; then
+        lipo -thin arm64 "$binary" -output "$binary.thin"
+        mv "$binary.thin" "$binary"
+        echo "Thinned $(basename "$framework") to arm64"
+    fi
+done
 # The share extension goes in its own copy of the IPA, in case the signing service can't sign
 # app extensions; the main IPA leaves it out.
 if [ -d "$out/Payload/Browser.app/PlugIns" ]; then
