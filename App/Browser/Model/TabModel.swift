@@ -19,6 +19,8 @@ protocol TabModelDelegate: ContextMenuHandler {
 /// discarded to save memory; its URL and back/forward history are kept for restoring.
 final class TabModel: NSObject, ObservableObject, Identifiable {
     let id: UUID
+    /// When WebKit last asked for a long-press menu (the image long-press fallback skips then).
+    var lastContextMenuDate = Date.distantPast
     let isPrivate: Bool
     weak var delegate: TabModelDelegate?
 
@@ -153,6 +155,7 @@ final class TabModel: NSObject, ObservableObject, Identifiable {
             }
         }
         webView.customUserAgent = effectiveUserAgent(for: pendingURL ?? url)
+        addImageLongPress(to: webView)
         observe(webView)
     }
 
