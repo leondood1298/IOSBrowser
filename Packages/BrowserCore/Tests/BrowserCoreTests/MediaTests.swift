@@ -68,6 +68,23 @@ final class MediaTests: XCTestCase {
         XCTAssertTrue(list[0].isProtected)
     }
 
+    func testCollapsingPlaylists() {
+        let master = DetectedMedia(url: url("https://a.com/hls/master.m3u8"), kind: .hls)
+        let variant = DetectedMedia(url: url("https://a.com/hls/720/index.m3u8"), kind: .hls, isFromRequest: true)
+        let clip = DetectedMedia(url: url("https://a.com/v.mp4"), kind: .video)
+        // The element's playlist wins over what the player fetched.
+        XCTAssertEqual(DetectedMedia.collapsingPlaylists([variant, clip, master]).map(\.url), [clip.url, master.url])
+        // Fetched only (a Media Source player): the first one, the master.
+        let fetchedMaster = DetectedMedia(url: master.url, kind: .hls, isFromRequest: true)
+        XCTAssertEqual(DetectedMedia.collapsingPlaylists([fetchedMaster, variant]).map(\.url), [master.url])
+        // Two videos playing their own playlists stay two.
+        let other = DetectedMedia(url: url("https://b.com/live.m3u8"), kind: .hls)
+        XCTAssertEqual(DetectedMedia.collapsingPlaylists([master, other, variant]).map(\.url), [master.url, other.url])
+        // A playlist seen as a request and then as an element's source counts as the element's.
+        let merged = DetectedMedia.merge([variant], adding: DetectedMedia(url: variant.url, kind: .hls))
+        XCTAssertFalse(merged[0].isFromRequest)
+    }
+
     func testDisplayOrder() {
         let stream = DetectedMedia(url: url("blob:https://a.com/1"), kind: .stream)
         let song = DetectedMedia(url: url("https://a.com/s.mp3"), kind: .audio)

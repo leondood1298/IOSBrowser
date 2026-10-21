@@ -7,7 +7,7 @@ import UIKit
 extension BrowserViewController {
     func showMediaPicker(from source: UIView) {
         guard let tab = model.selectedTab, !tab.detectedMedia.isEmpty, presentedViewController == nil else { return }
-        let media = DetectedMedia.sortedForDisplay(tab.detectedMedia.map { named($0, in: tab) })
+        let media = DetectedMedia.sortedForDisplay(DetectedMedia.collapsingPlaylists(tab.detectedMedia).map { named($0, in: tab) })
         let sizes = MediaSizes()
         let picker = MediaPickerView(
             media: media, sizes: sizes,

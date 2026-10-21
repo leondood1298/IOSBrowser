@@ -310,7 +310,8 @@ final class BrowserViewController: UIViewController {
         tab.$detectedMedia
             .receive(on: RunLoop.main)
             .sink { [weak self] media in
-                self?.addressField.updateMedia(count: media.count, downloadable: media.contains(where: \.isDownloadable))
+                let listed = DetectedMedia.collapsingPlaylists(media)
+                self?.addressField.updateMedia(count: listed.count, downloadable: listed.contains(where: \.isDownloadable))
             }
             .store(in: &tabObservers)
     }

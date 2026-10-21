@@ -24,12 +24,14 @@ public struct DetectedMedia: Hashable, Sendable, Identifiable {
     public var duration: Double?
     /// The element plays copy-protected (DRM) media.
     public var isProtected: Bool
+    /// Found among the page's requests rather than as a media element's source.
+    public var isFromRequest: Bool
 
     public var id: URL { url }
 
     public init(
         url: URL, kind: Kind, pageTitle: String = "", width: Int? = nil, height: Int? = nil,
-        duration: Double? = nil, isProtected: Bool = false
+        duration: Double? = nil, isProtected: Bool = false, isFromRequest: Bool = false
     ) {
         self.url = url
         self.kind = kind
@@ -38,6 +40,7 @@ public struct DetectedMedia: Hashable, Sendable, Identifiable {
         self.height = height
         self.duration = duration
         self.isProtected = isProtected
+        self.isFromRequest = isFromRequest
     }
 
     public var isDownloadable: Bool {
@@ -96,7 +99,17 @@ public struct DetectedMedia: Hashable, Sendable, Identifiable {
         list[index].height = new.height ?? list[index].height
         list[index].duration = new.duration ?? list[index].duration
         list[index].isProtected = list[index].isProtected || new.isProtected
+        list[index].isFromRequest = list[index].isFromRequest && new.isFromRequest
         return list
+    }
+
+    /// An HLS player fetches a master playlist and then the playlist of the quality it plays, so
+    /// the stream is listed once: the playlists media elements play, or else the first one fetched.
+    public static func collapsingPlaylists(_ list: [DetectedMedia]) -> [DetectedMedia] {
+        let playlists = list.filter { $0.kind == .hls }
+        guard playlists.count > 1 else { return list }
+        let first = playlists.first { !$0.isFromRequest } ?? playlists[0]
+        return list.filter { $0.kind != .hls || $0.url == first.url || !$0.isFromRequest }
     }
 
     /// The order for listing: videos, then streams that can be saved (HLS), then audio, then

@@ -362,7 +362,8 @@ final class TabModel: NSObject, ObservableObject, Identifiable {
             let media = DetectedMedia(
                 url: mediaURL, kind: kind, pageTitle: pageTitle,
                 width: width > 0 ? width : nil, height: height > 0 ? height : nil,
-                duration: duration > 0 ? duration : nil, isProtected: item["drm"] as? Bool ?? false)
+                duration: duration > 0 ? duration : nil, isProtected: item["drm"] as? Bool ?? false,
+                isFromRequest: element == nil)
             list = DetectedMedia.merge(list, adding: media)
         }
         if list != detectedMedia {
